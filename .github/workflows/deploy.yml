@@ -30,6 +30,7 @@ jobs:
       CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
       CLIENT_FEED_TOKEN: ${{ secrets.CLIENT_FEED_TOKEN }}
+      CEL_FEED_TOKEN: ${{ secrets.CEL_FEED_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,7 +65,7 @@ jobs:
 
       - name: Secretele Worker-ului (doar cele setate în GitHub)
         run: |
-          for v in ADMIN_TOKEN CLIENT_FEED_TOKEN; do
+          for v in ADMIN_TOKEN CLIENT_FEED_TOKEN CEL_FEED_TOKEN; do
             if [ -n "${!v}" ]; then
               printf '%s' "${!v}" | npx wrangler secret put "$v"
             fi

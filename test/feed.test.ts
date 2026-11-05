@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
+import { buildCelFeed, celStock } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
 import { parseFeed, parseNumber } from '../src/source';
@@ -152,6 +153,8 @@ describe('runSync', () => {
     expect(s1.ok).toBe(true);
     expect(s1.cel).toMatchObject({ mode: 'full', sent: 3, updated: 3 });
     expect(kv.store.get(KV_KEYS.feed)).toContain('<produs>');
+    expect(kv.store.get(KV_KEYS.celFeed)).toContain('<catalog>');
+    expect(s1.celFeed).toMatchObject({ products: 4, orderable: 2 });
 
     // Implicit (CEL_PUSH_ALL): a doua rulare retrimite tot, ca CEL să oglindească feed-ul.
     const s2 = await runSync(config, kv, new Date('2026-11-05T10:15:00Z'));
@@ -196,5 +199,38 @@ describe('CelClient', () => {
     const res = await client.updateStock([{ products_model: 'A', stoc: 3 }]);
     expect(res.updated).toBe(1);
     expect(logins).toBe(1);
+  });
+});
+
+describe('feed CEL', () => {
+  it('sub prag sau stoc necunoscut => 0, altfel stocul real minus rezerva', () => {
+    expect(celStock(9, 10, 0)).toBe(0);
+    expect(celStock(10, 10, 0)).toBe(10);
+    expect(celStock(null, 10, 0)).toBe(0);
+    expect(celStock(25, 10, 5)).toBe(20);
+  });
+
+  it('păstrează structura sursei, scoate rândul de titluri și transformă stocul', () => {
+    const r = parseFeed(SAMPLE, loadConfig(baseEnv));
+    const xml = buildCelFeed(r.rawItems, r.products, {
+      stockField: 'stoc', rootTag: r.tags.root, itemTag: r.tags.item, minStock: 10, buffer: 0,
+    });
+    expect(r.tags).toEqual({ root: 'catalog', item: 'produs' });
+    expect(xml.startsWith('<?xml')).toBe(true);
+    expect(xml).not.toContain('<![CDATA[Cod]]>');
+    expect(xml).toContain('<cod><![CDATA[0012]]></cod>');
+    expect(xml).toContain('<stoc><![CDATA[25]]></stoc>');
+    expect(xml).toContain('<stoc><![CDATA[0]]></stoc>'); // 9 bucăți
+    expect(xml).toContain('<pret><![CDATA[12,50]]></pret>'); // celelalte câmpuri rămân neschimbate
+    expect(xml.match(/<produs>/g)).toHaveLength(4);
+  });
+
+  it('nu strică textele care conțin ]]>', () => {
+    const xml = buildCelFeed([{ cod: 'A', desc: 'x ]]> y', stoc: '5' }], [{ sku: 'A', name: '', stock: 50, price: null, extra: {} }], {
+      stockField: 'stoc', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0,
+    });
+    const back = parseFeed(xml, loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'cod', FIELD_STOCK: 'stoc' } as unknown as Env));
+    expect(back.rawItems[0].desc).toBe('x ]]> y');
+    expect(back.products[0].stock).toBe(50);
   });
 });

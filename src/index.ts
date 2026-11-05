@@ -7,6 +7,7 @@ import { KV_KEYS } from './kv';
 interface WorkerEnv {
   FEED_KV: KVNamespace;
   CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
+  CEL_FEED_TOKEN?: string; // dacă e setat, /cel.xml cere ?token=...
   ADMIN_TOKEN?: string; // pentru /status
 }
 
@@ -40,6 +41,18 @@ export default {
           'Content-Type': 'application/xml; charset=utf-8',
           'Cache-Control': 'public, max-age=300',
         },
+      });
+    }
+
+    if (url.pathname === '/cel.xml' && req.method === 'GET') {
+      // Conține stocul real (peste prag), deci se poate proteja cu un token pus în linkul dat la CEL.
+      if (env.CEL_FEED_TOKEN && !timingSafeEqual(token, env.CEL_FEED_TOKEN)) {
+        return new Response('Acces neautorizat', { status: 401 });
+      }
+      const body = await env.FEED_KV.get(KV_KEYS.celFeed, 'stream');
+      if (!body) return new Response('Feed-ul CEL nu a fost generat încă', { status: 503 });
+      return new Response(body, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
       });
     }
 

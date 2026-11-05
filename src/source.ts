@@ -79,6 +79,10 @@ function pickField(items: Obj[], explicit: string | undefined, candidates: strin
 
 export interface ParseResult {
   products: Product[];
+  /** Elementele XML originale, în aceeași ordine ca `products` (pentru feed-ul CEL). */
+  rawItems: Record<string, unknown>[];
+  /** Numele tag-urilor: element produs și rădăcină, pentru a păstra structura. */
+  tags: { root: string; item: string };
   fieldsUsed: { sku: string; stock: string; name?: string; price?: string };
   skippedNoSku: number;
   skippedHeader: number;
@@ -113,6 +117,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   if (!stockField) throw new Error(`Nu am identificat câmpul de stoc. Setează FIELD_STOCK. Câmpuri găsite: ${sample}`);
 
   const products: Product[] = [];
+  const rawItems: Obj[] = [];
   const seen = new Set<string>();
   let skippedNoSku = 0;
   let skippedHeader = 0;
@@ -134,6 +139,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       if (v !== undefined) extra[f] = v;
     }
     const stock = parseNumber(text(item[stockField]));
+    rawItems.push(item);
     products.push({
       sku,
       name: (nameField && text(item[nameField])) || '',
@@ -145,10 +151,38 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
 
   return {
     products,
+    rawItems,
+    tags: detectTags(doc, config.itemPath, items),
     fieldsUsed: { sku: skuField, stock: stockField, name: nameField, price: priceField },
     skippedNoSku,
     skippedHeader,
   };
+}
+
+/** Găsește numele rădăcinii și al elementului produs (ex. products / product). */
+function detectTags(doc: unknown, itemPath: string | undefined, items: Obj[]): { root: string; item: string } {
+  if (itemPath) {
+    const parts = itemPath.split('.');
+    return { root: parts.length > 1 ? parts[parts.length - 2] : 'products', item: parts[parts.length - 1] };
+  }
+  let found = { root: 'products', item: 'product' };
+  const walk = (node: unknown, parent: string): boolean => {
+    if (!isObj(node)) return false;
+    for (const [k, v] of Object.entries(node)) {
+      if (Array.isArray(v) && v.includes(items[0])) {
+        found = { root: parent, item: k };
+        return true;
+      }
+      if (isObj(v) && v === items[0]) {
+        found = { root: parent, item: k };
+        return true;
+      }
+      if (walk(v, k)) return true;
+    }
+    return false;
+  };
+  walk(doc, 'products');
+  return found;
 }
 
 /** "Product Code" în tag-ul <Product_Code> => rând de titluri, nu produs. */

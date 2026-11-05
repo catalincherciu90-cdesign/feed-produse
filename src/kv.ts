@@ -5,6 +5,7 @@
  */
 export const KV_KEYS = {
   feed: 'feed:xml',
+  celFeed: 'feed:cel.xml', // feed pentru rubrica Feed din adminul CEL
   status: 'sync:status',
   celPushed: 'cel:pushed', // { sku: stoc } ultima valoare trimisă cu succes
   celLastFull: 'cel:lastFull',

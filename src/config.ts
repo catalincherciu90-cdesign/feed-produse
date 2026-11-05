@@ -17,7 +17,8 @@ export interface Env {
   MAX_DROP_PERCENT?: string; // implicit 50: oprește sync-ul dacă feed-ul scade brusc
 
   // CEL
-  CEL_ENABLED?: string; // implicit "true"
+  CEL_FEED_ENABLED?: string; // implicit "true": generează feed-ul /cel.xml
+  CEL_ENABLED?: string; // implicit "true" (API CEL)
   CEL_PUSH_ALL?: string; // implicit "true": trimite toate produsele la fiecare rulare
   CEL_USERNAME?: string;
   CEL_PASSWORD?: string;
@@ -38,6 +39,7 @@ export interface Config {
   celStockBuffer: number;
   zeroMissingOnCel: boolean;
   maxDropPercent: number;
+  celFeedEnabled: boolean;
   celEnabled: boolean;
   celPushAll: boolean;
   celUsername?: string;
@@ -83,6 +85,7 @@ export function loadConfig(env: Env): Config {
     celStockBuffer: num(env.CEL_STOCK_BUFFER, 0),
     zeroMissingOnCel: bool(env.ZERO_MISSING_ON_CEL, true),
     maxDropPercent: num(env.MAX_DROP_PERCENT, 50),
+    celFeedEnabled: bool(env.CEL_FEED_ENABLED, true),
     celEnabled: bool(env.CEL_ENABLED, true),
     celPushAll: bool(env.CEL_PUSH_ALL, true),
     celUsername: opt(env.CEL_USERNAME),

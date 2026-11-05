@@ -1,4 +1,5 @@
 import { CelClient, type CelStockUpdate } from './cel';
+import { buildCelFeed, celStock } from './celFeed';
 import { buildClientFeed, isAvailable } from './clientFeed';
 import type { Config } from './config';
 import { getJson, KV_KEYS, type KVStore } from './kv';
@@ -21,6 +22,7 @@ export interface SyncStatus {
     skippedHeader: number;
     fieldsUsed: Record<string, string | undefined>;
   };
+  celFeed?: { products: number; orderable: number; bytes: number };
   cel?: {
     skipped?: string;
     mode?: 'diff' | 'full';
@@ -91,6 +93,23 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
 
     // 2. Feed clienți
     await kv.put(KV_KEYS.feed, buildClientFeed(products, config.availableMinStock, status.startedAt));
+
+    // 2b. Feed pentru CEL (aceeași structură ca sursa, stoc 0 sub prag)
+    if (config.celFeedEnabled) {
+      const celXml = buildCelFeed(parsed.rawItems, products, {
+        stockField: parsed.fieldsUsed.stock,
+        rootTag: parsed.tags.root,
+        itemTag: parsed.tags.item,
+        minStock: config.celMinStock,
+        buffer: config.celStockBuffer,
+      });
+      await kv.put(KV_KEYS.celFeed, celXml);
+      status.celFeed = {
+        products: products.length,
+        orderable: products.filter((p) => celStock(p.stock, config.celMinStock, config.celStockBuffer) > 0).length,
+        bytes: celXml.length,
+      };
+    }
 
     // 3. CEL
     if (!config.celEnabled) {

@@ -40,6 +40,20 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 
 Pragurile se schimbă în `.github/workflows/sync.yml` (`AVAILABLE_MIN_STOCK`, `CEL_MIN_STOCK`, `CEL_STOCK_BUFFER`).
 
+## Feed-ul pentru CEL (rubrica Publicare > Feed)
+
+URL: `https://feed-produse.<contul-tau>.workers.dev/cel.xml` (sau `?token=...` dacă setezi secretul `CEL_FEED_TOKEN`).
+
+Are **exact aceeași structură și aceleași câmpuri** ca feed-ul tău de pe spotvisionelectric.ro (`Product_Code`, `Product_Name`, `Description`, …, `Stock`), deci maparea câmpurilor din CEL rămâne valabilă. Diferențele:
+
+- lipsește rândul de titluri pe care exportul îl pune ca prim produs;
+- lipsește caracterul invizibil (BOM) de la începutul fișierului;
+- `Stock` e număr întreg; **sub 10 bucăți este 0**, deci produsul nu poate fi comandat pe CEL.
+
+În adminul CEL înlocuiești linkul feed-ului cu cel de mai sus. Cât de des îl citește CEL depinde de setările lor (butonul cu ceasul de la feed).
+
+Limită: feed-ul tău nu conține preț. Dacă CEL cere prețul, trebuie adăugat în exportul de pe site.
+
 ## Feed-ul pentru clienți
 
 URL: `https://feed-produse.<contul-tau>.workers.dev/feed.xml`
@@ -82,6 +96,7 @@ Totul se face din browser, nu trebuie instalat nimic pe calculator.
 | `CEL_PASSWORD` | parolă API CEL | sincronizare |
 | `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru `/status` | Worker (opțional) |
 | `CLIENT_FEED_TOKEN` | dacă vrei ca feed-ul clienților să ceară `?token=...` | Worker (opțional) |
+| `CEL_FEED_TOKEN` | dacă vrei ca `/cel.xml` să ceară `?token=...` (recomandat: conține stocul real) | Worker (opțional) |
 
 Apoi publică Worker-ul: **Actions > Deploy Worker > Run workflow**. Workflow-ul rulează testele, pune id-ul KV în configurare, face deploy și setează secretele Worker-ului. Rulează automat și la orice modificare a codului Worker-ului.
 
@@ -107,6 +122,7 @@ Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze p
 | Cale | Acces | Ce face |
 |---|---|---|
 | `/feed.xml` | public (sau `CLIENT_FEED_TOKEN`) | feed-ul pentru clienți |
+| `/cel.xml` | public (sau `CEL_FEED_TOKEN`) | feed-ul pentru CEL |
 | `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări |
 
 ## Dezvoltare
