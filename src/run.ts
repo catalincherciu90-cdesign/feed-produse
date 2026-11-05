@@ -20,7 +20,8 @@ async function main(): Promise<void> {
   const c = status.cel;
   const lines = [
     `Produse: ${s?.products ?? '-'} | disponibile: ${s?.available ?? '-'} | indisponibile: ${s?.unavailable ?? '-'}`,
-    `CEL: ${c?.skipped ?? `mod ${c?.mode}, trimise ${c?.sent ?? 0}, actualizate ${c?.updated ?? 0}, respinse ${c?.badList?.length ?? 0}`}`,
+    `Feed CEL (/cel.xml): ${status.celFeed ? `${status.celFeed.products} produse, ${status.celFeed.orderable} comandabile, ${(status.celFeed.bytes / 1e6).toFixed(1)} MB` : 'negenerat'}`,
+    `API CEL: ${c?.skipped ?? `mod ${c?.mode}, trimise ${c?.sent ?? 0}, actualizate ${c?.updated ?? 0}, respinse ${c?.badList?.length ?? 0}`}`,
   ];
   if (c?.badList?.length) lines.push(`Respinse de CEL (primele): ${JSON.stringify(c.badList.slice(0, 10))}`);
   if (status.error) lines.push(`EROARE: ${status.error}`);
