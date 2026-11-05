@@ -36,6 +36,8 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 | 10 sau mai mult | stocul real | `disponibil: da`, „in stoc” |
 | produsul dispare din feed | 0 | nu mai apare |
 
+**Comenzile care trec sub prag sunt permise.** Dacă la sincronizare ai 12 bucăți, pe CEL apar 12. O comandă de 5 se plasează normal, chiar dacă rămâi cu 7. Pragul nu anulează comenzi, doar oprește comenzile noi: la următoarea sincronizare, stocul de 7 din feed devine 0 pe CEL. Pe CEL nu se poate comanda niciodată mai mult decât stocul real trimis.
+
 Pragurile se schimbă în `.github/workflows/sync.yml` (`AVAILABLE_MIN_STOCK`, `CEL_MIN_STOCK`, `CEL_STOCK_BUFFER`).
 
 ## Feed-ul pentru clienți

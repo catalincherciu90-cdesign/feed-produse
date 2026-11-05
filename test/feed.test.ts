@@ -104,6 +104,16 @@ describe('planCelUpdates', () => {
     ]);
   });
 
+  it('o comandă care coboară stocul sub prag e permisă, blocarea vine la sincronizarea următoare', () => {
+    const opts = { minStock: 10, buffer: 0, zeroMissing: true, full: false };
+    // Sincronizare: 12 în stoc => pe CEL apar toate 12, deci o comandă de 5 poate fi plasată.
+    const first = planCelUpdates([{ sku: 'A', name: '', stock: 12, price: null, extra: {} }], {}, opts);
+    expect(first.updates).toEqual([{ products_model: 'A', stoc: 12 }]);
+    // După comandă feed-ul arată 7 => sub prag, produsul se blochează pe CEL.
+    const next = planCelUpdates([{ sku: 'A', name: '', stock: 7, price: null, extra: {} }], { A: 12 }, opts);
+    expect(next.updates).toEqual([{ products_model: 'A', stoc: 0 }]);
+  });
+
   it('aplică rezerva și nu coboară sub 0', () => {
     const plan = planCelUpdates(products, {}, { minStock: 0, buffer: 10, zeroMissing: true, full: true });
     expect(plan.updates).toEqual([
