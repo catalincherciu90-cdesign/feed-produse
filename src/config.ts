@@ -1,6 +1,5 @@
+/** Variabile de mediu (în GitHub Actions vin din process.env). */
 export interface Env {
-  FEED_KV: KVNamespace;
-
   // Sursa
   SOURCE_URL: string;
   SOURCE_AUTH?: string; // ex. "Basic xxx" sau "Bearer xxx", trimis ca header Authorization
@@ -12,6 +11,7 @@ export interface Env {
 
   // Reguli
   AVAILABLE_MIN_STOCK?: string; // implicit 10: stoc >= 10 = disponibil
+  CEL_MIN_STOCK?: string; // implicit = AVAILABLE_MIN_STOCK: sub prag se trimite 0 pe CEL
   CEL_STOCK_BUFFER?: string; // implicit 0: câte bucăți rezervi (nu le trimiți pe CEL)
   ZERO_MISSING_ON_CEL?: string; // implicit "true"
   MAX_DROP_PERCENT?: string; // implicit 50: oprește sync-ul dacă feed-ul scade brusc
@@ -24,9 +24,7 @@ export interface Env {
   CEL_DEMO?: string; // "true" = trimite header DEMO: 1
 
   // Feed clienți
-  CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
   CLIENT_FEED_EXTRA_FIELDS?: string; // ex. "ean,brand": câmpuri din sursă copiate în feed
-  ADMIN_TOKEN?: string; // pentru /status și /sync
 }
 
 export interface Config {
@@ -35,6 +33,7 @@ export interface Config {
   itemPath?: string;
   fields: { sku?: string; stock?: string; name?: string; price?: string };
   availableMinStock: number;
+  celMinStock: number;
   celStockBuffer: number;
   zeroMissingOnCel: boolean;
   maxDropPercent: number;
@@ -43,9 +42,7 @@ export interface Config {
   celPassword?: string;
   celApiUrl: string;
   celDemo: boolean;
-  clientFeedToken?: string;
   clientFeedExtraFields: string[];
-  adminToken?: string;
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -80,6 +77,7 @@ export function loadConfig(env: Env): Config {
       price: opt(env.FIELD_PRICE),
     },
     availableMinStock: num(env.AVAILABLE_MIN_STOCK, 10),
+    celMinStock: num(env.CEL_MIN_STOCK, num(env.AVAILABLE_MIN_STOCK, 10)),
     celStockBuffer: num(env.CEL_STOCK_BUFFER, 0),
     zeroMissingOnCel: bool(env.ZERO_MISSING_ON_CEL, true),
     maxDropPercent: num(env.MAX_DROP_PERCENT, 50),
@@ -88,11 +86,9 @@ export function loadConfig(env: Env): Config {
     celPassword: opt(env.CEL_PASSWORD),
     celApiUrl: apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`,
     celDemo: bool(env.CEL_DEMO, false),
-    clientFeedToken: opt(env.CLIENT_FEED_TOKEN),
     clientFeedExtraFields: (env.CLIENT_FEED_EXTRA_FIELDS ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
-    adminToken: opt(env.ADMIN_TOKEN),
   };
 }

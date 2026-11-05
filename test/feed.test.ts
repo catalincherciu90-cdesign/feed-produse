@@ -7,10 +7,8 @@ import { KV_KEYS, planCelUpdates, runSync } from '../src/sync';
 
 class MemKV {
   store = new Map<string, string>();
-  async get(key: string, type?: string) {
-    const v = this.store.get(key);
-    if (v === undefined) return null;
-    return type === 'json' ? JSON.parse(v) : v;
+  async get(key: string) {
+    return this.store.get(key) ?? null;
   }
   async put(key: string, value: string) {
     this.store.set(key, value);
@@ -84,7 +82,7 @@ describe('planCelUpdates', () => {
   ];
 
   it('trimite doar ce s-a schimbat și pune 0 la produsele dispărute', () => {
-    const plan = planCelUpdates(products, { A: 5, B: 18, Z: 4 }, { buffer: 0, zeroMissing: true, full: false });
+    const plan = planCelUpdates(products, { A: 5, B: 18, Z: 4 }, { minStock: 0, buffer: 0, zeroMissing: true, full: false });
     expect(plan.updates).toEqual([
       { products_model: 'B', stoc: 20 },
       { products_model: 'Z', stoc: 0 },
@@ -92,8 +90,22 @@ describe('planCelUpdates', () => {
     expect(plan.zeroed).toEqual(['Z']);
   });
 
+  it('sub prag trimite 0 pe CEL, ca produsul să nu poată fi comandat', () => {
+    const items = [
+      { sku: 'A', name: '', stock: 9, price: null, extra: {} },
+      { sku: 'B', name: '', stock: 10, price: null, extra: {} },
+      { sku: 'C', name: '', stock: 294, price: null, extra: {} },
+    ];
+    const plan = planCelUpdates(items, {}, { minStock: 10, buffer: 0, zeroMissing: true, full: true });
+    expect(plan.updates).toEqual([
+      { products_model: 'A', stoc: 0 },
+      { products_model: 'B', stoc: 10 },
+      { products_model: 'C', stoc: 294 },
+    ]);
+  });
+
   it('aplică rezerva și nu coboară sub 0', () => {
-    const plan = planCelUpdates(products, {}, { buffer: 10, zeroMissing: true, full: true });
+    const plan = planCelUpdates(products, {}, { minStock: 0, buffer: 10, zeroMissing: true, full: true });
     expect(plan.updates).toEqual([
       { products_model: 'A', stoc: 0 },
       { products_model: 'B', stoc: 10 },
@@ -126,13 +138,13 @@ describe('runSync', () => {
     vi.stubGlobal('fetch', fetchMock);
     const config = loadConfig({ ...baseEnv, CEL_USERNAME: 'u', CEL_PASSWORD: 'p' } as Env);
 
-    const s1 = await runSync(config, kv as unknown as KVNamespace, new Date('2026-11-05T10:00:00Z'));
+    const s1 = await runSync(config, kv, new Date('2026-11-05T10:00:00Z'));
     expect(s1.ok).toBe(true);
     expect(s1.cel).toMatchObject({ mode: 'full', sent: 3, updated: 3 });
     expect(kv.store.get(KV_KEYS.feed)).toContain('<produs>');
 
     // A doua rulare fără modificări: nu trimite nimic pe CEL.
-    const s2 = await runSync(config, kv as unknown as KVNamespace, new Date('2026-11-05T10:15:00Z'));
+    const s2 = await runSync(config, kv, new Date('2026-11-05T10:15:00Z'));
     expect(s2.cel).toMatchObject({ mode: 'diff', sent: 0 });
     vi.unstubAllGlobals();
   });
@@ -142,7 +154,7 @@ describe('runSync', () => {
     kv.store.set(KV_KEYS.lastCount, '100');
     kv.store.set(KV_KEYS.feed, 'VECHI');
     vi.stubGlobal('fetch', vi.fn(async () => new Response(SAMPLE)));
-    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv as unknown as KVNamespace);
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv);
     expect(s.ok).toBe(false);
     expect(s.error).toMatch(/oprit sincronizarea/);
     expect(kv.store.get(KV_KEYS.feed)).toBe('VECHI');
@@ -165,7 +177,7 @@ describe('CelClient', () => {
       return new Response(JSON.stringify({ error: 0, tokenStatus: 1, message: { updated: ['A'], bad_list: [] } }));
     });
     const config = loadConfig({ ...baseEnv, CEL_USERNAME: 'u', CEL_PASSWORD: 'p' } as Env);
-    const client = new CelClient(config, kv as unknown as KVNamespace, fetchFn as unknown as typeof fetch);
+    const client = new CelClient(config, kv, fetchFn as unknown as typeof fetch);
     const res = await client.updateStock([{ products_model: 'A', stoc: 3 }]);
     expect(res.updated).toBe(1);
     expect(logins).toBe(1);

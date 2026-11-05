@@ -1,42 +1,15 @@
+# Worker-ul doar servește /feed.xml și /status (plan gratuit).
+# Sincronizarea rulează în GitHub Actions: .github/workflows/sync.yml
 name = "feed-produse"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-# Rulează sincronizarea la fiecare 15 minute.
-[triggers]
-crons = ["*/15 * * * *"]
-
 # Creează namespace-ul cu: npx wrangler kv namespace create FEED_KV
-# și pune aici id-ul primit.
+# și pune aici id-ul primit (același id merge și în secretul CF_KV_NAMESPACE_ID din GitHub).
 [[kv_namespaces]]
 binding = "FEED_KV"
 id = "PUNE_AICI_ID_KV"
 
-[vars]
-# Pragul de disponibilitate: stoc >= 10 => "disponibil", sub 10 => "indisponibil momentan"
-AVAILABLE_MIN_STOCK = "10"
-# Câte bucăți NU trimiți pe CEL (rezervă). 0 = trimite stocul real.
-CEL_STOCK_BUFFER = "0"
-# Produsele care dispar din feed primesc stoc 0 pe CEL.
-ZERO_MISSING_ON_CEL = "true"
-# Dacă feed-ul are brusc cu peste 50% mai puține produse, nu sincroniza nimic.
-MAX_DROP_PERCENT = "50"
-CEL_ENABLED = "true"
-CEL_DEMO = "false"
-
-# Câmpurile feed-ului spotvisionelectric.ro (gol = detectare automată).
-SOURCE_ITEM_PATH = "products.product"
-FIELD_SKU = "Product_Code"
-FIELD_STOCK = "Stock"
-FIELD_NAME = "Product_Name"
-FIELD_PRICE = ""
-# Câmpuri din feed-ul sursă copiate în feed-ul clienților, separate prin virgulă (ex. "ean,brand").
-CLIENT_FEED_EXTRA_FIELDS = ""
-
-# Secrete (NU le pune aici). Setează-le cu `npx wrangler secret put NUME`:
-#   SOURCE_URL          link-ul feed-ului tău XML
-#   SOURCE_AUTH         opțional, header Authorization pentru feed (ex. "Basic ...")
-#   CEL_USERNAME        user API CEL
-#   CEL_PASSWORD        parolă API CEL
-#   ADMIN_TOKEN         token pentru /status și /sync
-#   CLIENT_FEED_TOKEN   opțional, token cerut clienților la /feed.xml?token=...
+# Secrete opționale ale Worker-ului (`npx wrangler secret put NUME`):
+#   ADMIN_TOKEN         token pentru /status
+#   CLIENT_FEED_TOKEN   token cerut clienților la /feed.xml?token=...

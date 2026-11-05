@@ -1,5 +1,14 @@
-import { loadConfig, type Env } from './config';
-import { KV_KEYS, runSync } from './sync';
+/**
+ * Worker Cloudflare (plan gratuit): doar servește feed-ul pentru clienți și statusul.
+ * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
+ */
+import { KV_KEYS } from './kv';
+
+interface WorkerEnv {
+  FEED_KV: KVNamespace;
+  CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
+  ADMIN_TOKEN?: string; // pentru /status
+}
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -14,26 +23,19 @@ function tokenFrom(req: Request, url: URL): string {
   return url.searchParams.get('token') ?? '';
 }
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data, null, 2), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-  });
-}
-
 export default {
-  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(req.url);
-    const config = loadConfig(env);
     const token = tokenFrom(req, url);
 
     if (url.pathname === '/feed.xml' && req.method === 'GET') {
-      if (config.clientFeedToken && !timingSafeEqual(token, config.clientFeedToken)) {
+      if (env.CLIENT_FEED_TOKEN && !timingSafeEqual(token, env.CLIENT_FEED_TOKEN)) {
         return new Response('Acces neautorizat', { status: 401 });
       }
-      const xml = await env.FEED_KV.get(KV_KEYS.feed);
-      if (!xml) return new Response('Feed-ul nu a fost generat încă', { status: 503 });
-      return new Response(xml, {
+      // Stream direct din KV: consum minim de CPU, încape în limita planului gratuit.
+      const body = await env.FEED_KV.get(KV_KEYS.feed, 'stream');
+      if (!body) return new Response('Feed-ul nu a fost generat încă', { status: 503 });
+      return new Response(body, {
         headers: {
           'Content-Type': 'application/xml; charset=utf-8',
           'Cache-Control': 'public, max-age=300',
@@ -41,30 +43,17 @@ export default {
       });
     }
 
-    const isAdmin = !!config.adminToken && timingSafeEqual(token, config.adminToken);
-
     if (url.pathname === '/status' && req.method === 'GET') {
-      if (!isAdmin) return new Response('Acces neautorizat', { status: 401 });
-      return json(await env.FEED_KV.get(KV_KEYS.status, 'json'));
-    }
-
-    if (url.pathname === '/sync' && req.method === 'POST') {
-      if (!isAdmin) return new Response('Acces neautorizat', { status: 401 });
-      const status = await runSync(config, env.FEED_KV);
-      return json(status, status.ok ? 200 : 500);
+      if (!env.ADMIN_TOKEN || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
+        return new Response('Acces neautorizat', { status: 401 });
+      }
+      const status = await env.FEED_KV.get(KV_KEYS.status);
+      return new Response(status ?? 'null', { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
     if (url.pathname === '/') {
       return new Response('feed-produse: OK\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
     return new Response('Not found', { status: 404 });
-  },
-
-  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const status = await runSync(loadConfig(env), env.FEED_KV);
-    if (!status.ok) {
-      // Aruncăm eroarea ca rularea să apară ca eșuată în dashboard-ul Cloudflare.
-      throw new Error(status.error ?? status.cel?.error ?? 'Sincronizare eșuată');
-    }
   },
 };

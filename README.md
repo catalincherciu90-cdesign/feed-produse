@@ -1,61 +1,62 @@
 # feed-produse
 
-Aplicație Cloudflare Worker care, la fiecare 15 minute:
+Sincronizare automată, fără costuri, pentru feed-ul de produse spotvisionelectric.ro.
 
-1. **citește feed-ul tău XML** de produse;
-2. **actualizează stocul pe CEL.ro** prin API-ul CEL Marketplace (trimite doar produsele la care s-a schimbat stocul, plus o resincronizare completă o dată pe zi);
-3. **publică un feed XML pentru clienți** cu disponibilitatea fiecărui produs: **stoc ≥ 10 = disponibil**, **sub 10 = indisponibil momentan**. Feed-ul nu conține stocul real.
+La fiecare 15 minute:
+
+1. **citește feed-ul XML** de produse;
+2. **actualizează stocul pe CEL.ro**: produsele cu **sub 10 bucăți primesc stoc 0**, deci nu pot fi comandate. Restul primesc stocul real;
+3. **publică un feed XML pentru clienți**: **stoc ≥ 10 = disponibil**, **sub 10 = indisponibil momentan**. Feed-ul nu conține stocul real.
+
+## Arhitectură (0 lei/lună)
+
+```
+feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
+                     │
+                     └──► Cloudflare KV ◄── Worker gratuit ──► /feed.xml pentru clienți
+```
+
+| Componentă | Ce face | De ce e gratuită |
+|---|---|---|
+| GitHub Actions | partea grea: citește 8,4 MB de XML, trimite pe CEL | minutele sunt gratuite pe repouri publice ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-actions)) |
+| Cloudflare KV | păstrează feed-ul și starea sincronizării | ~480 scrieri/zi din 1.000 gratuite ([Cloudflare](https://developers.cloudflare.com/kv/platform/limits/)) |
+| Cloudflare Worker | servește `/feed.xml` | doar citește din KV, consum minim de CPU, încape în planul gratuit |
+
+### Limite de știut
+
+- **GitHub poate întârzia rulările programate** la ore aglomerate, deci „la 15 minute” poate însemna uneori 20-30 de minute.
+- **GitHub oprește automat rulările programate dacă repoul nu are activitate 60 de zile** ([GitHub](https://docs.github.com/en/actions/using-workflows/disabling-and-enabling-a-workflow)). Se repornesc din tab-ul **Actions**, cu butonul **Enable workflow**.
+- Repoul e public, deci codul se vede. Datele sensibile (link-ul feed-ului, parola CEL, token-urile) stau în **Secrets** și nu apar nicăieri.
+
+## Regulile, pe scurt
+
+| Stoc în feed-ul tău | Pe CEL se trimite | În feed-ul clienților |
+|---|---|---|
+| 0 - 9 | 0 (nu se poate comanda) | `disponibil: nu`, „indisponibil momentan” |
+| 10 sau mai mult | stocul real | `disponibil: da`, „in stoc” |
+| produsul dispare din feed | 0 | nu mai apare |
+
+Pragurile se schimbă în `.github/workflows/sync.yml` (`AVAILABLE_MIN_STOCK`, `CEL_MIN_STOCK`, `CEL_STOCK_BUFFER`).
 
 ## Feed-ul pentru clienți
 
-URL: `https://<worker>.workers.dev/feed.xml` (sau `?token=...` dacă setezi `CLIENT_FEED_TOKEN`).
+URL: `https://feed-produse.<contul-tau>.workers.dev/feed.xml`
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<produse generat="2026-11-05T10:00:00.000Z" total="2">
+<produse generat="2026-11-05T10:00:00.000Z" total="5678">
   <produs>
-    <cod>0012</cod>
-    <nume>Periuță de dinți</nume>
+    <cod>BL-1KMP-F</cod>
+    <nume>PRIZA APLICATA 1x16A CAUCIUC/CAPAC IP44 NEGRU</nume>
     <disponibil>da</disponibil>
     <status>in stoc</status>
-  </produs>
-  <produs>
-    <cod>0013</cod>
-    <nume>Ață dentară</nume>
-    <disponibil>nu</disponibil>
-    <status>indisponibil momentan</status>
   </produs>
 </produse>
 ```
 
-Produsele fără stoc citibil în feed-ul sursă apar ca indisponibile.
+## Instalare, pas cu pas
 
-## Cum citește feed-ul sursă
-
-Aplicația caută automat lista de produse (cea mai mare listă de elemente din XML) și câmpurile:
-
-| Ce caută | Nume recunoscute | Setare manuală |
-|---|---|---|
-| cod produs | `sku`, `cod`, `cod_produs`, `code`, `model`, `id` … | `FIELD_SKU` |
-| stoc | `stoc`, `stock`, `cantitate`, `quantity`, `qty` … | `FIELD_STOCK` |
-| nume | `nume`, `name`, `denumire`, `title` … | `FIELD_NAME` |
-
-Dacă structura e mai neobișnuită, setează `SOURCE_ITEM_PATH` (ex. `catalog.produs`) și câmpurile manual. După prima rulare, `/status` îți arată ce câmpuri a folosit.
-
-**Important:** codul produsului din feed trebuie să fie același cu `products_model` din contul CEL. Produsele pe care CEL nu le recunoaște apar în `/status` la `cel.badList`.
-
-## Protecții
-
-- Dacă feed-ul sursă nu se poate citi, nu se schimbă nimic (rămâne feed-ul vechi pentru clienți, nu se trimite nimic pe CEL).
-- Dacă feed-ul are brusc cu peste 50% mai puține produse decât la rularea anterioară (`MAX_DROP_PERCENT`), sincronizarea se oprește. Asta previne golirea stocului pe CEL din cauza unui export greșit.
-- Produsele care dispar din feed primesc stoc 0 pe CEL (`ZERO_MISSING_ON_CEL`).
-- `CEL_STOCK_BUFFER` îți permite să păstrezi o rezervă: dacă e 10, pe CEL se trimite `stoc - 10`.
-
-## Cerință: planul Workers Paid (5 USD/lună)
-
-Pe planul gratuit, o rulare programată are voie la 10 ms de procesor. Planul Paid permite 30 de secunde ([limite Cloudflare](https://developers.cloudflare.com/workers/platform/limits/#cpu-time)). Doar citirea feed-ului spotvisionelectric.ro (8,4 MB, 5.678 produse) durează aproximativ 300 ms, deci pe planul gratuit rularea ar fi oprită.
-
-## Instalare
+### 1. Cloudflare (o singură dată)
 
 ```bash
 npm install
@@ -69,47 +70,54 @@ npx wrangler login
 npx wrangler kv namespace create FEED_KV
 ```
 
-Pune id-ul primit în `wrangler.toml`, la `PUNE_AICI_ID_KV`. Apoi setează secretele:
-
-```bash
-npx wrangler secret put SOURCE_URL
-```
-
-```bash
-npx wrangler secret put CEL_USERNAME
-```
-
-```bash
-npx wrangler secret put CEL_PASSWORD
-```
+Pune id-ul primit în `wrangler.toml` (în locul `PUNE_AICI_ID_KV`), apoi:
 
 ```bash
 npx wrangler secret put ADMIN_TOKEN
 ```
 
-Opțional: `SOURCE_AUTH` (dacă feed-ul cere autentificare) și `CLIENT_FEED_TOKEN`.
-
 ```bash
 npm run deploy
 ```
 
-### Prima rulare, recomandat în siguranță
+Creează un API token în Cloudflare (**My Profile > API Tokens > Create Token**), cu permisiunea **Account > Workers KV Storage > Edit**. Notează și **Account ID** (apare în dashboard, în dreapta, pe pagina Workers).
 
-1. Pune `CEL_ENABLED = "false"` în `wrangler.toml`, fă deploy și rulează manual:
-   ```bash
-   curl -X POST -H "Authorization: Bearer <ADMIN_TOKEN>" https://<worker>.workers.dev/sync
-   ```
-   Verifică în răspuns câmpurile detectate și deschide `/feed.xml`.
-2. Activează CEL (`CEL_ENABLED = "true"`), eventual cu `CEL_DEMO = "true"` dacă ai cont de test de la CEL.
-3. Verifică `/status` (`cel.badList` trebuie să fie gol sau să conțină doar produse care nu sunt pe CEL).
+### 2. GitHub (o singură dată)
 
-## Endpoint-uri
+În repo: **Settings > Secrets and variables > Actions > Secrets > New repository secret**:
 
-| Metodă | Cale | Acces | Ce face |
-|---|---|---|---|
-| GET | `/feed.xml` | public sau `CLIENT_FEED_TOKEN` | feed-ul de disponibilitate pentru clienți |
-| GET | `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări |
-| POST | `/sync` | `ADMIN_TOKEN` | rulează sincronizarea imediat |
+| Secret | Valoare |
+|---|---|
+| `SOURCE_URL` | link-ul feed-ului XML |
+| `CEL_USERNAME` | user API CEL |
+| `CEL_PASSWORD` | parolă API CEL |
+| `CF_ACCOUNT_ID` | Account ID Cloudflare |
+| `CF_KV_NAMESPACE_ID` | id-ul namespace-ului FEED_KV |
+| `CF_API_TOKEN` | token-ul creat la pasul 1 |
+
+### 3. Prima rulare, în siguranță
+
+Workflow-ul pornește cu **CEL oprit** (`CEL_ENABLED` e `false` până îl activezi tu).
+
+1. Tab-ul **Actions > Sincronizare feed > Run workflow**. Verifică rezumatul rulării și deschide `/feed.xml`.
+2. Când totul arată bine, activează CEL: **Settings > Secrets and variables > Actions > Variables > New repository variable**, `CEL_ENABLED` = `true`.
+3. Rulează din nou și verifică în rezumat câte produse a respins CEL. Produsele respinse sunt, de obicei, cele care nu există pe CEL cu același cod.
+
+Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze programat.
+
+## Protecții
+
+- Dacă feed-ul sursă nu se poate citi, nu se schimbă nimic.
+- Dacă feed-ul are brusc cu peste 50% mai puține produse (`MAX_DROP_PERCENT`), sincronizarea se oprește. Asta previne golirea stocului pe CEL din cauza unui export greșit.
+- Rândul de titluri pe care exportul îl pune ca prim produs e ignorat.
+- Pe CEL se trimit doar produsele cu stocul schimbat, plus o resincronizare completă o dată pe zi.
+
+## Endpoint-uri Worker
+
+| Cale | Acces | Ce face |
+|---|---|---|
+| `/feed.xml` | public (sau `CLIENT_FEED_TOKEN`) | feed-ul pentru clienți |
+| `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări |
 
 ## Dezvoltare
 
@@ -124,6 +132,6 @@ npm run typecheck
 ## Ce nu am putut confirma
 
 - Durata de viață a token-ului CEL nu e documentată. Aplicația îl păstrează 12 ore și îl regenerează automat când CEL îl respinge.
-- Wrapper-ul oficial CEL are suport opțional pentru autentificare cu certificat (mTLS, `apimtls-mp.cel.ro`). Aplicația folosește varianta cu user și parolă. Dacă CEL îți cere certificat, trebuie adăugat un binding mTLS în Cloudflare.
+- Wrapper-ul oficial CEL are opțional autentificare cu certificat (mTLS). Aplicația folosește user și parolă.
 
 Sursa API: [wrapper-ul oficial CEL Marketplace](https://github.com/celdotro/marketplace) și [wiki-ul lui](https://github.com/celdotro/marketplace/wiki).

@@ -1,15 +1,10 @@
 import { CelClient, type CelStockUpdate } from './cel';
 import { buildClientFeed, isAvailable } from './clientFeed';
 import type { Config } from './config';
+import { getJson, KV_KEYS, type KVStore } from './kv';
 import { fetchSource, parseFeed, type Product } from './source';
 
-export const KV_KEYS = {
-  feed: 'feed:xml',
-  status: 'sync:status',
-  celPushed: 'cel:pushed', // { sku: stoc } ultima valoare trimisă cu succes
-  celLastFull: 'cel:lastFull',
-  lastCount: 'source:lastCount', // nr. produse la ultima citire reușită
-} as const;
+export { KV_KEYS };
 
 const FULL_RESYNC_MS = 24 * 3600 * 1000;
 
@@ -42,14 +37,15 @@ export interface SyncStatus {
 export function planCelUpdates(
   products: Product[],
   pushed: Record<string, number>,
-  opts: { buffer: number; zeroMissing: boolean; full: boolean },
+  opts: { minStock: number; buffer: number; zeroMissing: boolean; full: boolean },
 ): { updates: CelStockUpdate[]; zeroed: string[] } {
   const updates: CelStockUpdate[] = [];
   const current = new Set<string>();
   for (const p of products) {
     current.add(p.sku);
     if (p.stock === null) continue; // nu trimitem nimic dacă stocul e ilizibil
-    const stoc = Math.max(0, p.stock - opts.buffer);
+    // Sub prag => 0 pe CEL, ca produsul să nu poată fi comandat.
+    const stoc = p.stock < opts.minStock ? 0 : Math.max(0, p.stock - opts.buffer);
     if (opts.full || pushed[p.sku] !== stoc) updates.push({ products_model: p.sku, stoc });
   }
   const zeroed: string[] = [];
@@ -64,7 +60,7 @@ export function planCelUpdates(
   return { updates, zeroed };
 }
 
-export async function runSync(config: Config, kv: KVNamespace, now = new Date()): Promise<SyncStatus> {
+export async function runSync(config: Config, kv: KVStore, now = new Date()): Promise<SyncStatus> {
   const status: SyncStatus = { startedAt: now.toISOString(), ok: false };
   try {
     // 1. Feed sursă
@@ -102,10 +98,11 @@ export async function runSync(config: Config, kv: KVNamespace, now = new Date())
     } else {
       status.cel = {};
       try {
-        const pushed = (await kv.get<Record<string, number>>(KV_KEYS.celPushed, 'json')) ?? {};
+        const pushed = (await getJson<Record<string, number>>(kv, KV_KEYS.celPushed)) ?? {};
         const lastFull = Number((await kv.get(KV_KEYS.celLastFull)) ?? 0);
         const full = now.getTime() - lastFull > FULL_RESYNC_MS;
         const plan = planCelUpdates(products, pushed, {
+          minStock: config.celMinStock,
           buffer: config.celStockBuffer,
           zeroMissing: config.zeroMissingOnCel,
           full,

@@ -1,4 +1,5 @@
 import type { Config } from './config';
+import type { KVStore } from './kv';
 
 /**
  * Client minimal pentru API-ul CEL.ro Marketplace.
@@ -34,7 +35,7 @@ const TOKEN_ERRORS = new Set([302, 403, 405]);
 export class CelClient {
   constructor(
     private readonly config: Config,
-    private readonly kv: KVNamespace,
+    private readonly kv: KVStore,
     private readonly fetchFn: typeof fetch = (input, init) => fetch(input, init),
   ) {
     if (!config.celUsername || !config.celPassword) {

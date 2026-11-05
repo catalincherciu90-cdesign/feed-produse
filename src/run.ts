@@ -1,0 +1,42 @@
+/**
+ * Punct de intrare pentru GitHub Actions (Node.js).
+ * Citește feed-ul, trimite stocul pe CEL și scrie feed-ul pentru clienți în Cloudflare KV.
+ */
+import { loadConfig, type Env } from './config';
+import { CloudflareKvRest } from './kv';
+import { runSync } from './sync';
+
+function required(name: string): string {
+  const v = process.env[name]?.trim();
+  if (!v) throw new Error(`Lipsește variabila ${name}`);
+  return v;
+}
+
+async function main(): Promise<void> {
+  const kv = new CloudflareKvRest(required('CF_ACCOUNT_ID'), required('CF_KV_NAMESPACE_ID'), required('CF_API_TOKEN'));
+  const status = await runSync(loadConfig(process.env as unknown as Env), kv);
+
+  const s = status.source;
+  const c = status.cel;
+  const lines = [
+    `Produse: ${s?.products ?? '-'} | disponibile: ${s?.available ?? '-'} | indisponibile: ${s?.unavailable ?? '-'}`,
+    `CEL: ${c?.skipped ?? `mod ${c?.mode}, trimise ${c?.sent ?? 0}, actualizate ${c?.updated ?? 0}, respinse ${c?.badList?.length ?? 0}`}`,
+  ];
+  if (c?.badList?.length) lines.push(`Respinse de CEL (primele): ${JSON.stringify(c.badList.slice(0, 10))}`);
+  if (status.error) lines.push(`EROARE: ${status.error}`);
+  if (c?.error) lines.push(`EROARE CEL: ${c.error}`);
+  process.stdout.write(lines.join('\n') + '\n');
+
+  // Rezumat vizibil în pagina rulării din GitHub Actions
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const { appendFileSync } = await import('node:fs');
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.map((l) => `- ${l}`).join('\n') + '\n');
+  }
+
+  if (!status.ok) process.exit(1);
+}
+
+main().catch((e) => {
+  process.stderr.write(`EROARE: ${e instanceof Error ? e.message : String(e)}\n`);
+  process.exit(1);
+});

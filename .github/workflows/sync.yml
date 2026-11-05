@@ -1,0 +1,51 @@
+name: Sincronizare feed
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # la 15 minute (GitHub poate întârzia rulările programate)
+  workflow_dispatch: {} # buton "Run workflow" pentru rulare manuală
+
+# Nu pornește o rulare nouă cât timp cea anterioară încă rulează.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx src/run.ts
+        env:
+          # Secrete (Settings > Secrets and variables > Actions > Secrets)
+          SOURCE_URL: ${{ secrets.SOURCE_URL }}
+          CEL_USERNAME: ${{ secrets.CEL_USERNAME }}
+          CEL_PASSWORD: ${{ secrets.CEL_PASSWORD }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+
+          # Reguli
+          AVAILABLE_MIN_STOCK: "10" # feed clienți: stoc >= 10 disponibil, sub 10 indisponibil
+          CEL_MIN_STOCK: "10" # CEL: sub 10 se trimite stoc 0, deci nu poate fi comandat
+          CEL_STOCK_BUFFER: "0" # bucăți rezervate, scăzute din stocul trimis pe CEL
+          ZERO_MISSING_ON_CEL: "true" # produsele dispărute din feed primesc 0 pe CEL
+          MAX_DROP_PERCENT: "50" # oprește tot dacă feed-ul scade brusc cu peste 50%
+          CEL_ENABLED: ${{ vars.CEL_ENABLED || 'false' }} # pornește CEL din Settings > Variables
+          CEL_DEMO: ${{ vars.CEL_DEMO || 'false' }}
+
+          # Structura feed-ului spotvisionelectric.ro
+          SOURCE_ITEM_PATH: products.product
+          FIELD_SKU: Product_Code
+          FIELD_STOCK: Stock
+          FIELD_NAME: Product_Name
+          CLIENT_FEED_EXTRA_FIELDS: ""
