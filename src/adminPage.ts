@@ -126,6 +126,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <button data-tab="overrides">Excepții</button>
       </nav>
       <div class="spacer"></div>
+      <button class="btn primary" id="sync" title="Citește feed-ul acum și actualizează CEL și clienții">Sincronizează acum</button>
       <button class="btn" id="refresh" title="Reîncarcă datele">Reîncarcă</button>
       <button class="btn" id="logout">Ieșire</button>
     </div>
@@ -202,7 +203,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <label for="e-note">Notă (opțional)</label>
       <input id="e-note" maxlength="200" placeholder="ex. stoc rezervat pentru un client">
     </div>
-    <p class="help">Regula prețului 0 rămâne activă și cu „Fără prag”. Modificarea se aplică la următoarea sincronizare (maximum 15 minute).</p>
+    <p class="help">Regula prețului 0 rămâne activă și cu „Fără prag”. Modificarea se aplică la următoarea sincronizare (butonul „Sincronizează acum”).</p>
     <div class="row" style="justify-content:flex-end;margin-top:14px">
       <button class="btn" type="button" id="e-cancel">Renunță</button>
       <button class="btn primary" type="button" id="e-save">Salvează</button>
@@ -309,6 +310,46 @@ $('login-form').addEventListener('submit', function (e) {
 $('logout').addEventListener('click', function () { store(false, ''); state.token = ''; $('token').value = ''; showLogin(); });
 $('refresh').addEventListener('click', function () { load(false).then(function () { toast('Date reîncărcate'); }).catch(function () {}); });
 
+// ---------- Sincronizare manuală ----------
+var SYNC_POLL_MS = 5000, SYNC_TIMEOUT_MS = 4 * 60 * 1000;
+state.syncing = null; // { since, prevStartedAt, timer }
+function syncButton(text, disabled) { var b = $('sync'); b.textContent = text; b.disabled = !!disabled; }
+$('sync').addEventListener('click', function () {
+  if (state.syncing) return;
+  var prev = state.overview && state.overview.status ? state.overview.status.startedAt : null;
+  syncButton('Se pornește…', true);
+  api('POST', 'sync').then(function () {
+    state.syncing = { since: Date.now(), prevStartedAt: prev };
+    syncButton('Se sincronizează…', true);
+    renderStatus();
+    toast('Sincronizare pornită. Durează de obicei sub un minut.');
+    pollSync();
+  }).catch(function (e) {
+    syncButton('Sincronizează acum', false);
+    toast('Nu am putut porni sincronizarea: ' + e.message);
+  });
+});
+function pollSync() {
+  var s = state.syncing; if (!s) return;
+  if (Date.now() - s.since > SYNC_TIMEOUT_MS) {
+    state.syncing = null; syncButton('Sincronizează acum', false); renderStatus();
+    toast('Sincronizarea durează mai mult decât de obicei. Verifică rularea în GitHub Actions.');
+    return;
+  }
+  s.timer = setTimeout(function () {
+    api('GET', 'overview').then(function (ov) {
+      var st = ov.status;
+      if (st && st.startedAt !== s.prevStartedAt && st.finishedAt) {
+        state.syncing = null; syncButton('Sincronizează acum', false);
+        return load(false).then(function () {
+          toast(st.ok ? 'Sincronizare terminată cu succes.' : 'Sincronizarea s-a terminat cu erori. Vezi tab-ul Status.');
+        });
+      }
+      pollSync();
+    }).catch(function () { pollSync(); });
+  }, SYNC_POLL_MS);
+}
+
 // ---------- încărcare ----------
 function load(fromLogin) {
   return api('GET', 'overview').then(function (ov) {
@@ -381,7 +422,9 @@ function renderStatus() {
   root.appendChild(head);
 
   var mins = st.startedAt ? (Date.now() - new Date(st.startedAt).getTime()) / 60000 : 0;
-  if (mins > 60) root.appendChild(el('div', { class: 'alert warn', text: 'Ultima sincronizare a fost acum peste o oră. Sincronizarea e pornită la 15 minute de cron-ul Worker-ului Cloudflare: verifică în Cloudflare (Workers > feed-produse > Logs) dacă apare o eroare, de exemplu tokenul GH_DISPATCH_TOKEN lipsă sau expirat, și în GitHub Actions dacă rularea a eșuat.' }));
+  if (state.syncing) root.appendChild(el('div', { class: 'alert info', text: 'Sincronizare în curs, pornită ' + ago(new Date(state.syncing.since).toISOString()) + '. Pagina se actualizează singură când se termină.' }));
+  else if (mins > 24 * 60) root.appendChild(el('div', { class: 'alert warn', text: 'Datele sunt mai vechi de o zi. Stocul de pe CEL și din feed-ul clienților e cel de la ultima sincronizare. Apasă „Sincronizează acum”.' }));
+  else if (mins > 60) root.appendChild(el('div', { class: 'alert info', text: 'Datele sunt din ' + ago(st.startedAt) + '. Apasă „Sincronizează acum” ca să actualizezi stocul pe CEL și la clienți.' }));
   if (st.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare: ' + st.error }));
   if (st.cel && st.cel.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare API CEL: ' + st.cel.error }));
   (st.warnings || []).forEach(function (w) { root.appendChild(el('div', { class: 'alert warn', text: w })); });
@@ -576,7 +619,7 @@ function renderSettings() {
     }).catch(function (err) { toast('Eroare: ' + err.message); });
   });
   root.appendChild(el('div', { class: 'card' }, [el('h2', { text: 'Setări' }),
-    el('p', { class: 'muted small', text: 'Setările salvate aici au prioritate față de cele din fișierul workflow din GitHub. Se aplică la următoarea sincronizare (maximum 15 minute).' }), form]));
+    el('p', { class: 'muted small', text: 'Setările salvate aici au prioritate față de cele din fișierul workflow din GitHub. Se aplică la următoarea sincronizare (butonul „Sincronizează acum”).' }), form]));
 }
 function resetSettings() {
   api('DELETE', 'settings').then(function () {

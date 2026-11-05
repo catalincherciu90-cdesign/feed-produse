@@ -14,6 +14,7 @@ export const KV_KEYS = {
   settings: 'admin:settings', // setări editabile din panou
   overrides: 'admin:overrides', // excepții pe produs din panou
   snapshot: 'admin:products', // lista de produse pentru panou, scrisă la fiecare sincronizare
+  lastDispatch: 'admin:lastDispatch', // ultima pornire a sincronizării din panou
 } as const;
 
 export interface KVStore {

@@ -5,11 +5,15 @@
 import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
+import { dispatchSync, type TriggerEnv } from './trigger';
 
-export interface AdminEnv {
+export interface AdminEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
   ADMIN_TOKEN?: string;
 }
+
+/** Pauza minimă între două porniri ale sincronizării din panou. */
+export const SYNC_COOLDOWN_MS = 60 * 1000;
 
 const MAX_BODY = 16 * 1024;
 
@@ -54,7 +58,12 @@ async function readBody(req: Request): Promise<unknown> {
 }
 
 /** Întoarce un Response dacă ruta e a panoului, altfel null. */
-export async function handleAdmin(req: Request, env: AdminEnv, url: URL): Promise<Response | null> {
+export async function handleAdmin(
+  req: Request,
+  env: AdminEnv,
+  url: URL,
+  fetchFn?: typeof fetch,
+): Promise<Response | null> {
   const path = url.pathname;
   if (path === '/admin' || path === '/admin/') {
     return new Response(ADMIN_HTML, {
@@ -132,6 +141,18 @@ export async function handleAdmin(req: Request, env: AdminEnv, url: URL): Promis
         }
         await kv.put(KV_KEYS.overrides, JSON.stringify(overrides));
         return json({ ok: true, sku, override });
+      }
+
+      case 'POST /admin/api/sync': {
+        // Protecție la apăsări repetate: maximum o pornire pe minut.
+        const last = Number((await kv.get(KV_KEYS.lastDispatch)) ?? 0);
+        const wait = last + SYNC_COOLDOWN_MS - Date.now();
+        if (wait > 0) return error(`Sincronizarea a fost pornită acum câteva secunde. Mai încearcă în ${Math.ceil(wait / 1000)} s.`, 429);
+        await dispatchSync(env, fetchFn);
+        const requestedAt = new Date().toISOString();
+        // expirationTtl minim acceptat de KV e 60 de secunde
+        await kv.put(KV_KEYS.lastDispatch, String(Date.now()), { expirationTtl: 120 });
+        return json({ ok: true, requestedAt });
       }
 
       default:

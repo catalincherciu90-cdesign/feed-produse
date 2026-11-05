@@ -1,7 +1,6 @@
 /**
  * Pornește workflow-ul de sincronizare din GitHub Actions (workflow_dispatch).
- * Rulează din cron-ul Worker-ului Cloudflare, pentru că rulările programate de GitHub
- * (on: schedule) nu sunt garantate și se pot pierde la ore aglomerate.
+ * Folosit de butonul „Sincronizează acum” din panoul de admin.
  */
 
 export interface TriggerEnv {
@@ -13,7 +12,7 @@ export interface TriggerEnv {
 
 export async function dispatchSync(env: TriggerEnv, fetchFn: typeof fetch = (i, init) => fetch(i, init)): Promise<void> {
   const token = env.GH_DISPATCH_TOKEN?.trim();
-  if (!token) throw new Error('GH_DISPATCH_TOKEN nu este setat pe Worker: sincronizarea automată nu poate porni');
+  if (!token) throw new Error('GH_DISPATCH_TOKEN nu este setat pe Worker. Pune secretul în GitHub și rulează din nou „Deploy Worker”.');
   const repo = env.GH_REPO?.trim();
   const workflow = env.GH_WORKFLOW?.trim();
   const ref = env.GH_REF?.trim();

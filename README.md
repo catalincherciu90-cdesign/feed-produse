@@ -2,7 +2,7 @@
 
 Sincronizare automată, fără costuri, pentru feed-ul de produse spotvisionelectric.ro.
 
-La fiecare 15 minute:
+Când apeși **„Sincronizează acum”** în panoul de admin:
 
 1. **citește feed-ul XML** de produse;
 2. **actualizează stocul pe CEL.ro**, ca să fie mereu identic cu feed-ul tău: produsele cu **sub 10 bucăți primesc stoc 0**, deci nu pot fi comandate. Restul primesc stocul real;
@@ -11,7 +11,7 @@ La fiecare 15 minute:
 ## Arhitectură (0 lei/lună)
 
 ```
-Worker cron (la 15 min) ──► pornește GitHub Actions
+buton în /admin ──► Worker ──► pornește GitHub Actions
 feed XML ──► GitHub Actions ──► API CEL.ro (stoc, opțional)
                      │
                      └──► Cloudflare KV ◄── Worker gratuit ──► /feed.xml pentru clienți
@@ -21,12 +21,13 @@ feed XML ──► GitHub Actions ──► API CEL.ro (stoc, opțional)
 |---|---|---|
 | GitHub Actions | partea grea: citește 8,4 MB de XML, trimite pe CEL | minutele sunt gratuite pe repouri publice ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-actions)) |
 | Cloudflare KV | păstrează feed-urile, starea, istoricul, setările și excepțiile | ~480 scrieri/zi din 1.000 gratuite ([Cloudflare](https://developers.cloudflare.com/kv/platform/limits/)) |
-| Cloudflare Worker | servește `/feed.xml`, `/cel.xml`, panoul `/admin`; cron-ul lui pornește sincronizarea la 15 minute | doar citește din KV și face un apel la GitHub, consum minim de CPU, încape în planul gratuit (maximum 5 cron-uri pe cont) |
+| Cloudflare Worker | servește `/feed.xml`, `/cel.xml`, panoul `/admin` și pornește sincronizarea la cerere | doar citește din KV și face un apel la GitHub, consum minim de CPU, încape în planul gratuit |
 
 ### Limite de știut
 
-- **Sincronizarea e pornită de cron-ul Worker-ului Cloudflare, nu de programarea GitHub.** Programarea GitHub (`on: schedule`) nu a pornit deloc în primele ore, iar în 2026 există multe raportări de rulări programate pierdute ([discuție GitHub](https://github.com/orgs/community/discussions/185355)). Pornirea prin `workflow_dispatch` nu e afectată nici de oprirea automată după 60 de zile fără activitate, care se aplică doar rulărilor programate.
-- Cron-ul are nevoie de secretul `GH_DISPATCH_TOKEN` (vezi mai jos). Fără el, sincronizarea rulează doar manual, iar panoul arată un avertisment după o oră.
+- **Sincronizarea e manuală.** Stocul de pe CEL și din feed-ul clienților e cel de la ultima apăsare a butonului. Panoul arată cât de vechi sunt datele și te avertizează după o zi.
+- Butonul are nevoie de secretul `GH_DISPATCH_TOKEN` (vezi mai jos). Fără el, sincronizarea se poate porni doar din GitHub: **Actions > Sincronizare feed > Run workflow**.
+- Programarea automată din GitHub (`on: schedule`) nu a pornit deloc în teste, iar în 2026 există multe raportări de rulări programate pierdute ([discuție GitHub](https://github.com/orgs/community/discussions/185355)). De aceea nu se folosește.
 - Repoul e public, deci codul se vede. Datele sensibile (link-ul feed-ului, parola CEL, token-urile) stau în **Secrets** și nu apar nicăieri.
 
 ## Regulile, pe scurt
@@ -100,7 +101,7 @@ Totul se face din browser, nu trebuie instalat nimic pe calculator.
 | `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru panoul `/admin` și `/status` | Worker (necesar pentru panou) |
 | `CLIENT_FEED_TOKEN` | dacă vrei ca feed-ul clienților să ceară `?token=...` | Worker (opțional) |
 | `CEL_FEED_TOKEN` | dacă vrei ca `/cel.xml` să ceară `?token=...` (recomandat: conține stocul real) | Worker (opțional) |
-| `GH_DISPATCH_TOKEN` | token GitHub fine-grained: doar repo-ul `feed-produse`, permisiunea **Actions: Read and write** | Worker (necesar pentru sincronizarea automată) |
+| `GH_DISPATCH_TOKEN` | token GitHub fine-grained: doar repo-ul `feed-produse`, permisiunea **Actions: Read and write** | Worker (necesar pentru butonul „Sincronizează acum”) |
 
 **Tokenul `GH_DISPATCH_TOKEN`:** GitHub > poza de profil > **Settings** > **Developer settings** > **Personal access tokens** > **Fine-grained tokens** > **Generate new token**. La **Repository access** alegi **Only select repositories** > `feed-produse`. La **Permissions** > **Repository permissions** > **Actions** alegi **Read and write**. Pune-i o dată de expirare, de exemplu un an, și notează-ți să-l reînnoiești.
 
@@ -134,7 +135,7 @@ Adresa: **https://feed-produse.catalincherciu90.workers.dev/admin**. Te loghezi 
 | **Setări** | pragul pentru clienți, pragul pentru CEL, rezerva CEL, stocul maxim pe CEL, blocarea prețului 0. Au prioritate față de valorile din workflow. „Revino la valorile din workflow” le șterge |
 | **Excepții** | regulile pe produs: **Blochează** (stoc 0 pe CEL / indisponibil la clienți) sau **Fără prag** (se vinde și sub prag, dacă are stoc). Regula prețului 0 rămâne activă și cu „Fără prag” |
 
-Orice modificare din panou se aplică **la următoarea sincronizare** (maximum 15 minute). Până atunci, produsul apare marcat „se aplică la următoarea sincronizare”.
+Orice modificare din panou se aplică **la următoarea sincronizare**: apeși **„Sincronizează acum”** (sus, în dreapta). Durează de obicei sub un minut, iar pagina se actualizează singură când se termină. Butonul poate fi apăsat cel mult o dată pe minut.
 
 Panoul rulează pe planul gratuit Cloudflare. Lista de produse e generată de sincronizare, iar filtrarea se face în browser.
 

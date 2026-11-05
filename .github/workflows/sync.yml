@@ -1,9 +1,9 @@
 name: Sincronizare feed
 
-# Pornit la 15 minute de cron-ul Worker-ului Cloudflare (wrangler.toml), prin workflow_dispatch.
-# Programarea GitHub (on: schedule) a fost scoasă: nu pornea în mod fiabil și ar fi dublat rulările.
+# Sincronizare manuală: pornită din panoul de admin (butonul „Sincronizează acum”)
+# sau din GitHub, cu butonul "Run workflow". Nu există rulare programată.
 on:
-  workflow_dispatch: {} # pornit de Worker sau manual, cu butonul "Run workflow"
+  workflow_dispatch: {}
 
 # Nu pornește o rulare nouă cât timp cea anterioară încă rulează.
 concurrency:

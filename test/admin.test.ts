@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { handleAdmin } from '../src/admin';
 import { celDecision, clientDecision } from '../src/decisions';
 import { KV_KEYS } from '../src/kv';
@@ -151,5 +151,41 @@ describe('API panou', () => {
     const { call } = setup();
     const res = await call('POST', '/admin/api/override', { sku: 'A', cel: 'block', note: 'x'.repeat(20000) });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('butonul Sincronizează acum', () => {
+  function syncCall(kv: FakeKV, envExtra: Record<string, string>, fetchFn: typeof fetch) {
+    const env = { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN, GH_REPO: 'o/r', GH_WORKFLOW: 'sync.yml', GH_REF: 'main', ...envExtra };
+    const url = new URL('https://x.workers.dev/admin/api/sync');
+    const req = new Request(url, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` } });
+    return handleAdmin(req, env, url, fetchFn) as Promise<Response>;
+  }
+
+  it('pornește workflow-ul și blochează apăsările repetate un minut', async () => {
+    const kv = new FakeKV();
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    const first = await syncCall(kv, { GH_DISPATCH_TOKEN: 'gh' }, f as unknown as typeof fetch);
+    expect(first.status).toBe(200);
+    expect(f).toHaveBeenCalledTimes(1);
+    const second = await syncCall(kv, { GH_DISPATCH_TOKEN: 'gh' }, f as unknown as typeof fetch);
+    expect(second.status).toBe(429);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('dă un mesaj clar fără token GitHub', async () => {
+    const res = await syncCall(new FakeKV(), {}, vi.fn() as unknown as typeof fetch);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toMatch(/GH_DISPATCH_TOKEN/);
+  });
+
+  it('nu pornește nimic fără token de admin', async () => {
+    const kv = new FakeKV();
+    const f = vi.fn();
+    const url = new URL('https://x.workers.dev/admin/api/sync');
+    const req = new Request(url, { method: 'POST' });
+    const res = await handleAdmin(req, { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN, GH_DISPATCH_TOKEN: 'gh' }, url, f as unknown as typeof fetch);
+    expect(res!.status).toBe(401);
+    expect(f).not.toHaveBeenCalled();
   });
 });
