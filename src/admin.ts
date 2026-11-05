@@ -96,11 +96,12 @@ export async function handleAdmin(
     switch (route) {
       case 'GET /admin/api/overview': {
         // Valorile sunt deja JSON în KV: le lipim fără parsare (consum minim de CPU).
+        const fresh = { cacheTtl: 30 };
         const [status, history, settings, overrides] = await Promise.all([
-          kv.get(KV_KEYS.status),
-          kv.get(KV_KEYS.history),
-          kv.get(KV_KEYS.settings),
-          kv.get(KV_KEYS.overrides),
+          kv.get(KV_KEYS.status, fresh),
+          kv.get(KV_KEYS.history, fresh),
+          kv.get(KV_KEYS.settings, fresh),
+          kv.get(KV_KEYS.overrides, fresh),
         ]);
         return raw(
           `{"status":${status ?? 'null'},"history":${history ?? '[]'},"settings":${settings ?? 'null'},"overrides":${overrides ?? '{}'}}`,
@@ -108,7 +109,8 @@ export async function handleAdmin(
       }
 
       case 'GET /admin/api/products': {
-        const body = await kv.get(KV_KEYS.snapshot, 'stream');
+        // cacheTtl minim (30 s): după o sincronizare, lista nouă apare mai repede.
+        const body = await kv.get(KV_KEYS.snapshot, { type: 'stream', cacheTtl: 30 });
         if (!body) return error('Lista de produse apare după prima sincronizare', 404);
         return new Response(body, {
           headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS },

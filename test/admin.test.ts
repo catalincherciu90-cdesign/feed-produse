@@ -6,7 +6,8 @@ import { parseOverrides, validateOverride, validateSettings } from '../src/rules
 
 class FakeKV {
   store = new Map<string, string>();
-  async get(key: string, type?: string) {
+  async get(key: string, opts?: string | { type?: string }) {
+    const type = typeof opts === 'string' ? opts : opts?.type;
     const v = this.store.get(key);
     if (v === undefined) return null;
     if (type === 'stream') return new Response(v).body;

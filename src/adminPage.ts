@@ -357,17 +357,48 @@ function load(fromLogin) {
     if (fromLogin) store(false, state.token);
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
     renderStatus(); renderSettings(); renderOverrides();
-    return api('GET', 'products').then(function (snap) {
-      state.snapshot = snap; applyFilters(); renderOverrides(); renderStatus();
-    }).catch(function (e) {
-      state.snapshot = null; applyFilters();
-      if (e.status !== 404) toast('Eroare la lista de produse: ' + e.message);
-    });
+    return loadProducts(0);
   }).catch(function (e) {
     if (e.status === 401) { store(false, ''); showLogin(fromLogin ? 'Token greșit' : ''); }
     else if (fromLogin) showLogin('Eroare: ' + e.message);
     else toast('Eroare: ' + e.message);
     throw e;
+  });
+}
+
+// ---------- lista de produse ----------
+// Cloudflare KV ține în cache răspunsurile ~30-60 s (inclusiv „cheia nu există”), deci imediat după
+// o sincronizare lista poate lipsi sau poate fi cea veche. Reîncercăm până se potrivește cu statusul.
+var PRODUCTS_RETRY_MS = 10000, PRODUCTS_MAX_TRIES = 9;
+state.productsMsg = '';
+function expectedSnapshotTime() {
+  var st = state.overview && state.overview.status;
+  return st && st.source ? st.startedAt : null; // doar rulările care au citit feed-ul scriu lista
+}
+function loadProducts(attempt) {
+  clearTimeout(state.productsTimer);
+  return api('GET', 'products').then(function (snap) {
+    var want = expectedSnapshotTime();
+    var stale = want && snap && snap.generatedAt && new Date(snap.generatedAt) < new Date(want);
+    state.snapshot = snap; state.productsMsg = '';
+    if (stale && attempt < PRODUCTS_MAX_TRIES) {
+      state.productsMsg = 'Se încarcă lista nouă de produse (Cloudflare actualizează datele în până la un minut)…';
+      state.productsTimer = setTimeout(function () { loadProducts(attempt + 1); }, PRODUCTS_RETRY_MS);
+    }
+    applyFilters(); renderOverrides(); renderStatus();
+  }).catch(function (e) {
+    state.snapshot = null;
+    if (e.status === 404 && expectedSnapshotTime() && attempt < PRODUCTS_MAX_TRIES) {
+      state.productsMsg = 'Se încarcă lista de produse (Cloudflare actualizează datele în până la un minut)…';
+      state.productsTimer = setTimeout(function () { loadProducts(attempt + 1); }, PRODUCTS_RETRY_MS);
+    } else if (e.status === 404) {
+      state.productsMsg = expectedSnapshotTime()
+        ? 'Lista de produse nu a apărut încă. Apasă „Reîncarcă” peste un minut sau „Sincronizează acum”.'
+        : 'Lista de produse apare după prima sincronizare. Apasă „Sincronizează acum”.';
+    } else {
+      state.productsMsg = 'Eroare la încărcarea listei de produse: ' + e.message + '. Apasă „Reîncarcă”.';
+    }
+    applyFilters();
   });
 }
 
@@ -522,9 +553,10 @@ function renderProducts() {
   var total = state.filtered.length;
   var all = (state.snapshot && state.snapshot.rows) ? state.snapshot.rows.length : 0;
   if (!state.snapshot) {
-    $('products-info').textContent = 'Lista de produse apare după prima sincronizare cu această versiune.';
+    $('products-info').textContent = state.productsMsg || 'Se încarcă lista de produse…';
   } else {
-    $('products-info').textContent = fmtNum(total) + ' din ' + fmtNum(all) + ' produse · date din ' + fmtTime(state.snapshot.generatedAt);
+    $('products-info').textContent = fmtNum(total) + ' din ' + fmtNum(all) + ' produse · date din ' + fmtTime(state.snapshot.generatedAt) +
+      (state.productsMsg ? ' · ' + state.productsMsg : '');
   }
   var start = state.page * PAGE_SIZE;
   state.filtered.slice(start, start + PAGE_SIZE).forEach(function (r) {
@@ -541,6 +573,7 @@ function renderProducts() {
       oc
     ]));
   });
+  if (!state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '7', class: 'muted', text: state.productsMsg || 'Se încarcă lista de produse…' })]));
   if (total === 0 && state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '7', class: 'muted', text: 'Niciun produs nu corespunde filtrelor.' })]));
   var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   $('page-info').textContent = 'Pagina ' + (state.page + 1) + ' din ' + pages;
