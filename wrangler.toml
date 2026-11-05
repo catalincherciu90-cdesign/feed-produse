@@ -4,12 +4,14 @@ name = "feed-produse"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-# Creează namespace-ul cu: npx wrangler kv namespace create FEED_KV
-# și pune aici id-ul primit (același id merge și în secretul CF_KV_NAMESPACE_ID din GitHub).
+# Id-ul NU se scrie aici: workflow-ul de deploy (.github/workflows/deploy.yml)
+# îl înlocuiește din secretul GitHub CF_KV_NAMESPACE_ID.
+# Pentru deploy manual de pe calculator, pune temporar id-ul în locul PUNE_AICI_ID_KV.
 [[kv_namespaces]]
 binding = "FEED_KV"
 id = "PUNE_AICI_ID_KV"
 
-# Secrete opționale ale Worker-ului (`npx wrangler secret put NUME`):
+# Secrete opționale ale Worker-ului. Workflow-ul de deploy le preia automat
+# din secretele GitHub cu același nume, dacă există:
 #   ADMIN_TOKEN         token pentru /status
 #   CLIENT_FEED_TOKEN   token cerut clienților la /feed.xml?token=...

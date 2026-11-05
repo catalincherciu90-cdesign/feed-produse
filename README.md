@@ -58,44 +58,32 @@ URL: `https://feed-produse.<contul-tau>.workers.dev/feed.xml`
 
 ## Instalare, pas cu pas
 
+Totul se face din browser, nu trebuie instalat nimic pe calculator.
+
 ### 1. Cloudflare (o singură dată)
 
-```bash
-npm install
-```
-
-```bash
-npx wrangler login
-```
-
-```bash
-npx wrangler kv namespace create FEED_KV
-```
-
-Pune id-ul primit în `wrangler.toml` (în locul `PUNE_AICI_ID_KV`), apoi:
-
-```bash
-npx wrangler secret put ADMIN_TOKEN
-```
-
-```bash
-npm run deploy
-```
-
-Creează un API token în Cloudflare (**My Profile > API Tokens > Create Token**), cu permisiunea **Account > Workers KV Storage > Edit**. Notează și **Account ID** (apare în dashboard, în dreapta, pe pagina Workers).
+1. **Namespace KV:** în dashboard, **Storage & Databases > Workers KV > Create**, cu numele `feed-produse`. Notează id-ul.
+2. **API token:** **My Profile > API Tokens > Create Token > Create Custom Token**, cu permisiunile:
+   - **Account > Workers Scripts > Edit** (pentru deploy)
+   - **Account > Workers KV Storage > Edit** (pentru sincronizare)
+3. **Account ID:** apare în dashboard, pe pagina **Workers & Pages**, în dreapta.
 
 ### 2. GitHub (o singură dată)
 
 În repo: **Settings > Secrets and variables > Actions > Secrets > New repository secret**:
 
-| Secret | Valoare |
-|---|---|
-| `SOURCE_URL` | link-ul feed-ului XML |
-| `CEL_USERNAME` | user API CEL |
-| `CEL_PASSWORD` | parolă API CEL |
-| `CF_ACCOUNT_ID` | Account ID Cloudflare |
-| `CF_KV_NAMESPACE_ID` | id-ul namespace-ului FEED_KV |
-| `CF_API_TOKEN` | token-ul creat la pasul 1 |
+| Secret | Valoare | Folosit de |
+|---|---|---|
+| `CF_API_TOKEN` | token-ul de la pasul 1 | deploy + sincronizare |
+| `CF_ACCOUNT_ID` | Account ID Cloudflare | deploy + sincronizare |
+| `CF_KV_NAMESPACE_ID` | id-ul namespace-ului KV | deploy + sincronizare |
+| `SOURCE_URL` | link-ul feed-ului XML | sincronizare |
+| `CEL_USERNAME` | user API CEL | sincronizare |
+| `CEL_PASSWORD` | parolă API CEL | sincronizare |
+| `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru `/status` | Worker (opțional) |
+| `CLIENT_FEED_TOKEN` | dacă vrei ca feed-ul clienților să ceară `?token=...` | Worker (opțional) |
+
+Apoi publică Worker-ul: **Actions > Deploy Worker > Run workflow**. Workflow-ul rulează testele, pune id-ul KV în configurare, face deploy și setează secretele Worker-ului. Rulează automat și la orice modificare a codului Worker-ului.
 
 ### 3. Prima rulare, în siguranță
 
