@@ -57,6 +57,18 @@ describe('reguli și excepții', () => {
     expect(celDecision(P('B', 0), { ...rules, overrides })).toEqual({ stock: 0, reason: 'fara-stoc' });
   });
 
+  it('limita superioară de stoc pe CEL', () => {
+    const r = { ...rules, maxStock: 50 };
+    expect(celDecision(P('A', 1800), r)).toEqual({ stock: 50, reason: 'ok' });
+    expect(celDecision(P('A', 30), r)).toEqual({ stock: 30, reason: 'ok' });
+    expect(celDecision(P('A', 5), r)).toEqual({ stock: 0, reason: 'prag' });
+    expect(celDecision(P('A', 1800), { ...r, maxStock: 0 })).toEqual({ stock: 1800, reason: 'ok' });
+    // rezerva se scade întâi, apoi se aplică limita
+    expect(celDecision(P('A', 55), { ...r, buffer: 10 })).toEqual({ stock: 45, reason: 'ok' });
+    // limita se aplică și cu excepția „fără prag”
+    expect(celDecision(P('B', 1800), { ...r, overrides: { B: { cel: 'ignore-threshold' } } })).toEqual({ stock: 50, reason: 'exceptie' });
+  });
+
   it('excepțiile pentru clienți', () => {
     const overrides = { A: { client: 'block' as const }, B: { client: 'ignore-threshold' as const } };
     expect(clientDecision(P('A', 500), 10, overrides)).toEqual({ available: false, reason: 'blocat' });
@@ -66,9 +78,12 @@ describe('reguli și excepții', () => {
   });
 
   it('validarea setărilor', () => {
+    // setările vechi, fără celMaxStock, rămân valide (fără limită)
     expect(validateSettings({ availableMinStock: 10, celMinStock: '12', celStockBuffer: 0, celBlockZeroPrice: true })).toEqual({
-      availableMinStock: 10, celMinStock: 12, celStockBuffer: 0, celBlockZeroPrice: true,
+      availableMinStock: 10, celMinStock: 12, celStockBuffer: 0, celMaxStock: 0, celBlockZeroPrice: true,
     });
+    expect(validateSettings({ availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celMaxStock: '50', celBlockZeroPrice: true }).celMaxStock).toBe(50);
+    expect(() => validateSettings({ availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celMaxStock: -5, celBlockZeroPrice: true })).toThrow(/maxim/);
     expect(() => validateSettings({ availableMinStock: -1, celMinStock: 10, celStockBuffer: 0, celBlockZeroPrice: true })).toThrow();
     expect(() => validateSettings({ availableMinStock: 1.5, celMinStock: 10, celStockBuffer: 0, celBlockZeroPrice: true })).toThrow();
     expect(() => validateSettings({ availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celBlockZeroPrice: 'da' })).toThrow();

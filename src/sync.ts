@@ -68,6 +68,7 @@ export function planCelUpdates(
   opts: {
     minStock: number;
     buffer: number;
+    maxStock?: number;
     zeroMissing: boolean;
     full: boolean;
     requirePrice?: boolean;
@@ -83,6 +84,7 @@ export function planCelUpdates(
     const stoc = celStockFor(p, {
       minStock: opts.minStock,
       buffer: opts.buffer,
+      maxStock: opts.maxStock,
       requirePrice: !!opts.requirePrice,
       overrides: opts.overrides,
     });
@@ -107,6 +109,7 @@ export function applySettings(config: Config, s: Settings): Config {
     availableMinStock: s.availableMinStock,
     celMinStock: s.celMinStock,
     celStockBuffer: s.celStockBuffer,
+    celMaxStock: s.celMaxStock,
     celBlockZeroPrice: s.celBlockZeroPrice,
   };
 }
@@ -116,6 +119,7 @@ export function settingsFromConfig(config: Config): Settings {
     availableMinStock: config.availableMinStock,
     celMinStock: config.celMinStock,
     celStockBuffer: config.celStockBuffer,
+    celMaxStock: config.celMaxStock,
     celBlockZeroPrice: config.celBlockZeroPrice,
   };
 }
@@ -204,6 +208,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
     const rules: CelStockRules = {
       minStock: config.celMinStock,
       buffer: config.celStockBuffer,
+      maxStock: config.celMaxStock,
       requirePrice: config.celBlockZeroPrice && !!parsed.fieldsUsed.price,
       overrides,
     };
@@ -241,6 +246,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         const plan = planCelUpdates(products, pushed, {
           minStock: config.celMinStock,
           buffer: config.celStockBuffer,
+          maxStock: config.celMaxStock,
           requirePrice: rules.requirePrice,
           overrides,
           zeroMissing: config.zeroMissingOnCel,

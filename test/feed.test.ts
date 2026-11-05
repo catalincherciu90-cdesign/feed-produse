@@ -247,7 +247,7 @@ describe('feed CEL', () => {
 describe('runSync cu setări și excepții din panou', () => {
   it('aplică setările din panou, excepțiile și scrie istoricul și lista de produse', async () => {
     const kv = new MemKV();
-    kv.store.set(KV_KEYS.settings, JSON.stringify({ availableMinStock: 5, celMinStock: 5, celStockBuffer: 0, celBlockZeroPrice: false }));
+    kv.store.set(KV_KEYS.settings, JSON.stringify({ availableMinStock: 5, celMinStock: 5, celStockBuffer: 0, celMaxStock: 20, celBlockZeroPrice: false }));
     kv.store.set(KV_KEYS.overrides, JSON.stringify({ '0012': { cel: 'block' }, '0013': { client: 'block' } }));
     vi.stubGlobal('fetch', vi.fn(async () => new Response(SAMPLE)));
     const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv);
@@ -258,6 +258,8 @@ describe('runSync cu setări și excepții din panou', () => {
     const row = (sku: string) => snap.rows.find((r: unknown[]) => r[0] === sku);
     expect(row('0012').slice(4, 6)).toEqual([0, 'blocat']); // blocat manual pe CEL, deși are 25 buc.
     expect(row('0013').slice(4, 8)).toEqual([9, 'ok', 0, 'blocat']); // 9 >= prag 5 pe CEL, dar blocat la clienți
+    expect(row('0014').slice(4, 6)).toEqual([10, 'ok']);
+    expect(kv.store.get(KV_KEYS.celFeed)).not.toContain('<stoc><![CDATA[25]]></stoc>'); // 0012 e blocat; nimic peste limita de 20
     expect(kv.store.get(KV_KEYS.feed)).toMatch(/<cod>0013<\/cod>[\s\S]*?<disponibil>nu<\/disponibil>/);
     expect(kv.store.get(KV_KEYS.celFeed)).toMatch(/<!\[CDATA\[0012\]\]>[\s\S]*?<stoc><!\[CDATA\[0\]\]><\/stoc>/);
     const history = JSON.parse(kv.store.get(KV_KEYS.history)!);

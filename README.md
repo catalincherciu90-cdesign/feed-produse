@@ -35,11 +35,12 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 | 0 - 9 | 0 (nu se poate comanda) | `disponibil: nu`, „indisponibil momentan” |
 | 10 sau mai mult | stocul real | `disponibil: da`, „in stoc” |
 | orice stoc, dar preț 0 sau lipsă | 0 (nu se poate comanda) | după stoc |
+| peste stocul maxim (dacă e setat) | stocul maxim | după stoc |
 | produsul dispare din feed | 0 | nu mai apare |
 
 **Comenzile care trec sub prag sunt permise.** Dacă la sincronizare ai 12 bucăți, pe CEL apar 12. O comandă de 5 se plasează normal, chiar dacă rămâi cu 7. Pragul nu anulează comenzi, doar oprește comenzile noi: la următoarea sincronizare, stocul de 7 din feed devine 0 pe CEL. Pe CEL nu se poate comanda niciodată mai mult decât stocul real trimis.
 
-Pragurile se schimbă în `.github/workflows/sync.yml` (`AVAILABLE_MIN_STOCK`, `CEL_MIN_STOCK`, `CEL_STOCK_BUFFER`).
+Pragurile se schimbă din panoul de admin (tab-ul Setări) sau în `.github/workflows/sync.yml` (`AVAILABLE_MIN_STOCK`, `CEL_MIN_STOCK`, `CEL_STOCK_BUFFER`, `CEL_MAX_STOCK`).
 
 ## Feed-ul pentru CEL (rubrica Publicare > Feed)
 
@@ -126,7 +127,7 @@ Adresa: **https://feed-produse.catalincherciu90.workers.dev/admin**. Te loghezi 
 |---|---|
 | **Status** | ultima sincronizare (reușită sau nu, erori), cifrele principale, linkurile feed-urilor cu buton de copiere, istoricul ultimelor 96 de rulări (o zi) |
 | **Produse** | toate produsele, cu căutare după cod sau nume și filtre: comandabile pe CEL, sub prag, preț 0, blocate manual, disponibile la clienți. Pentru fiecare produs vezi stocul real, prețul, ce primește CEL și de ce |
-| **Setări** | pragul pentru clienți, pragul pentru CEL, rezerva CEL, blocarea prețului 0. Au prioritate față de valorile din workflow. „Revino la valorile din workflow” le șterge |
+| **Setări** | pragul pentru clienți, pragul pentru CEL, rezerva CEL, stocul maxim pe CEL, blocarea prețului 0. Au prioritate față de valorile din workflow. „Revino la valorile din workflow” le șterge |
 | **Excepții** | regulile pe produs: **Blochează** (stoc 0 pe CEL / indisponibil la clienți) sau **Fără prag** (se vinde și sub prag, dacă are stoc). Regula prețului 0 rămâne activă și cu „Fără prag” |
 
 Orice modificare din panou se aplică **la următoarea sincronizare** (maximum 15 minute). Până atunci, produsul apare marcat „se aplică la următoarea sincronizare”.

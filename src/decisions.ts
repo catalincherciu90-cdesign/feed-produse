@@ -13,6 +13,8 @@ export interface ProductLike {
 export interface CelStockRules {
   minStock: number;
   buffer: number;
+  /** Stocul maxim trimis pe CEL; 0 sau lipsă = fără limită. */
+  maxStock?: number;
   /** true = produsele fără preț valid (lipsă sau 0) primesc stoc 0, ca să nu se vândă la 0 lei. */
   requirePrice: boolean;
   overrides?: Record<string, ProductOverride>;
@@ -30,16 +32,21 @@ export function celStock(stock: number | null, minStock: number, buffer: number)
   return stock < minStock ? 0 : Math.max(0, stock - buffer);
 }
 
+/** Aplică limita superioară (0 = fără limită). */
+export function capStock(stock: number, maxStock: number | undefined): number {
+  return maxStock && maxStock > 0 ? Math.min(stock, maxStock) : stock;
+}
+
 export function celDecision(p: ProductLike, rules: CelStockRules): { stock: number; reason: Reason } {
   const ov = rules.overrides?.[p.sku]?.cel;
   if (ov === 'block') return { stock: 0, reason: 'blocat' };
   if (rules.requirePrice && !hasValidPrice(p)) return { stock: 0, reason: 'pret' };
   if (p.stock === null || p.stock <= 0) return { stock: 0, reason: 'fara-stoc' };
   if (ov === 'ignore-threshold') {
-    const stock = Math.max(0, p.stock - rules.buffer);
+    const stock = capStock(Math.max(0, p.stock - rules.buffer), rules.maxStock);
     return { stock, reason: stock > 0 ? 'exceptie' : 'fara-stoc' };
   }
-  const stock = celStock(p.stock, rules.minStock, rules.buffer);
+  const stock = capStock(celStock(p.stock, rules.minStock, rules.buffer), rules.maxStock);
   if (stock > 0) return { stock, reason: 'ok' };
   return { stock: 0, reason: p.stock < rules.minStock ? 'prag' : 'fara-stoc' };
 }

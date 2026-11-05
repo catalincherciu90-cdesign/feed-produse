@@ -7,6 +7,7 @@ export interface Settings {
   availableMinStock: number; // feed clienți: stoc >= prag => disponibil
   celMinStock: number; // CEL: stoc sub prag => 0
   celStockBuffer: number; // CEL: bucăți rezervate, scăzute din stoc
+  celMaxStock: number; // CEL: stocul trimis nu depășește valoarea asta; 0 = fără limită
   celBlockZeroPrice: boolean; // CEL: preț 0 sau lipsă => 0
 }
 
@@ -46,6 +47,8 @@ export function validateSettings(raw: unknown): Settings {
     availableMinStock: intSetting(r.availableMinStock, 'Pragul pentru clienți'),
     celMinStock: intSetting(r.celMinStock, 'Pragul pentru CEL'),
     celStockBuffer: intSetting(r.celStockBuffer, 'Rezerva pentru CEL'),
+    // opțional, pentru setările salvate înainte să existe limita
+    celMaxStock: r.celMaxStock === undefined ? 0 : intSetting(r.celMaxStock, 'Stocul maxim pentru CEL'),
     celBlockZeroPrice: r.celBlockZeroPrice,
   };
 }

@@ -13,6 +13,7 @@ export interface Env {
   AVAILABLE_MIN_STOCK?: string; // implicit 10: stoc >= 10 = disponibil
   CEL_MIN_STOCK?: string; // implicit = AVAILABLE_MIN_STOCK: sub prag se trimite 0 pe CEL
   CEL_BLOCK_ZERO_PRICE?: string; // implicit "true": preț 0 sau lipsă => stoc 0 pe CEL
+  CEL_MAX_STOCK?: string; // implicit 0 = fără limită: stocul maxim trimis pe CEL
   CEL_STOCK_BUFFER?: string; // implicit 0: câte bucăți rezervi (nu le trimiți pe CEL)
   ZERO_MISSING_ON_CEL?: string; // implicit "true"
   MAX_DROP_PERCENT?: string; // implicit 50: oprește sync-ul dacă feed-ul scade brusc
@@ -38,6 +39,7 @@ export interface Config {
   availableMinStock: number;
   celMinStock: number;
   celStockBuffer: number;
+  celMaxStock: number;
   celBlockZeroPrice: boolean;
   zeroMissingOnCel: boolean;
   maxDropPercent: number;
@@ -85,6 +87,7 @@ export function loadConfig(env: Env): Config {
     availableMinStock: num(env.AVAILABLE_MIN_STOCK, 10),
     celMinStock: num(env.CEL_MIN_STOCK, num(env.AVAILABLE_MIN_STOCK, 10)),
     celStockBuffer: num(env.CEL_STOCK_BUFFER, 0),
+    celMaxStock: num(env.CEL_MAX_STOCK, 0),
     celBlockZeroPrice: bool(env.CEL_BLOCK_ZERO_PRICE, true),
     zeroMissingOnCel: bool(env.ZERO_MISSING_ON_CEL, true),
     maxDropPercent: num(env.MAX_DROP_PERCENT, 50),

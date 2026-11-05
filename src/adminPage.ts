@@ -349,7 +349,7 @@ function effectiveSettings() {
   if (ov.settings) return { s: ov.settings, source: 'panou' };
   var st = ov.status && ov.status.settings;
   if (st) return { s: st, source: st.source || 'workflow' };
-  return { s: { availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celBlockZeroPrice: true }, source: 'implicit' };
+  return { s: { availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celMaxStock: 0, celBlockZeroPrice: true }, source: 'implicit' };
 }
 
 function stat(label, value, hint) {
@@ -404,7 +404,7 @@ function renderStatus() {
     el('p', { class: 'help', text: 'Dacă ai setat CEL_FEED_TOKEN sau CLIENT_FEED_TOKEN, adaugă la link ?token=... .' }),
     el('h3', { style: 'margin-top:14px', text: 'Reguli în vigoare' }),
     el('p', { class: 'small', style: 'margin:0' }, [
-      'Clienți: disponibil de la ' + es.s.availableMinStock + ' buc. · CEL: comandabil de la ' + es.s.celMinStock + ' buc., rezervă ' + es.s.celStockBuffer + ' buc., preț 0 ' + (es.s.celBlockZeroPrice ? 'blocat' : 'permis') + ' · sursă: ',
+      'Clienți: disponibil de la ' + es.s.availableMinStock + ' buc. · CEL: comandabil de la ' + es.s.celMinStock + ' buc., rezervă ' + es.s.celStockBuffer + ' buc., maxim ' + (es.s.celMaxStock ? es.s.celMaxStock + ' buc.' : 'nelimitat') + ', preț 0 ' + (es.s.celBlockZeroPrice ? 'blocat' : 'permis') + ' · sursă: ',
       badge([es.source === 'panou' ? 'panou' : 'workflow', es.source === 'panou' ? 'b-info' : 'b-muted'])
     ])
   ]);
@@ -550,6 +550,7 @@ function renderSettings() {
     numField('s-client', 'Prag disponibilitate clienți (buc.)', s.availableMinStock, 'Sub acest stoc produsul apare „indisponibil momentan” în feed-ul clienților.'),
     numField('s-cel', 'Prag comandabil pe CEL (buc.)', s.celMinStock, 'Sub acest stoc, pe CEL se trimite 0.'),
     numField('s-buffer', 'Rezervă CEL (buc.)', s.celStockBuffer, 'Se scade din stocul trimis pe CEL. 0 = stocul real.'),
+    numField('s-max', 'Stoc maxim pe CEL (buc.)', s.celMaxStock || 0, 'Pe CEL nu apare mai mult de atât, chiar dacă ai mai mult. 0 = fără limită.'),
     el('div', null, [el('label', { for: 's-price', text: 'Produse cu preț 0' }),
       (function () {
         var sel = el('select', { id: 's-price' }, [el('option', { value: 'true', text: 'Blocate pe CEL (recomandat)' }), el('option', { value: 'false', text: 'Permise' })]);
@@ -567,7 +568,7 @@ function renderSettings() {
     e.preventDefault();
     var body = {
       availableMinStock: Number($('s-client').value), celMinStock: Number($('s-cel').value),
-      celStockBuffer: Number($('s-buffer').value), celBlockZeroPrice: $('s-price').value === 'true'
+      celStockBuffer: Number($('s-buffer').value), celMaxStock: Number($('s-max').value), celBlockZeroPrice: $('s-price').value === 'true'
     };
     api('PUT', 'settings', body).then(function (res) {
       state.overview.settings = res.settings; renderSettings(); renderStatus();
