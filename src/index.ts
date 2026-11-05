@@ -1,11 +1,13 @@
 /**
  * Worker Cloudflare (plan gratuit): servește feed-urile, statusul și panoul de admin (/admin).
  * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
+ * Cron-ul Worker-ului (la 15 minute) pornește acea sincronizare (src/trigger.ts).
  */
 import { handleAdmin } from './admin';
 import { KV_KEYS } from './kv';
+import { dispatchSync, type TriggerEnv } from './trigger';
 
-interface WorkerEnv {
+interface WorkerEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
   CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
   CEL_FEED_TOKEN?: string; // dacă e setat, /cel.xml cere ?token=...
@@ -74,5 +76,10 @@ export default {
       return new Response('feed-produse: OK\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
     return new Response('Not found', { status: 404 });
+  },
+
+  // Cron Cloudflare (wrangler.toml [triggers]): pornește sincronizarea din GitHub Actions.
+  async scheduled(_event: ScheduledController, env: WorkerEnv): Promise<void> {
+    await dispatchSync(env);
   },
 };

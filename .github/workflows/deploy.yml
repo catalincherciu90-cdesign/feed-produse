@@ -30,6 +30,7 @@ jobs:
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
       CLIENT_FEED_TOKEN: ${{ secrets.CLIENT_FEED_TOKEN }}
       CEL_FEED_TOKEN: ${{ secrets.CEL_FEED_TOKEN }}
+      GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -64,7 +65,7 @@ jobs:
 
       - name: Secretele Worker-ului (doar cele setate în GitHub)
         run: |
-          for v in ADMIN_TOKEN CLIENT_FEED_TOKEN CEL_FEED_TOKEN; do
+          for v in ADMIN_TOKEN CLIENT_FEED_TOKEN CEL_FEED_TOKEN GH_DISPATCH_TOKEN; do
             if [ -n "${!v}" ]; then
               printf '%s' "${!v}" | npx wrangler secret put "$v"
             fi

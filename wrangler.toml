@@ -7,6 +7,16 @@ compatibility_date = "2026-10-01"
 # Id-ul NU se scrie aici: workflow-ul de deploy (.github/workflows/deploy.yml)
 # îl înlocuiește din secretul GitHub CF_KV_NAMESPACE_ID.
 # Pentru deploy manual de pe calculator, pune temporar id-ul în locul PUNE_AICI_ID_KV.
+# La fiecare 15 minute, Worker-ul pornește workflow-ul „Sincronizare feed” din GitHub.
+# (Programarea din GitHub, on: schedule, nu pornea în mod fiabil.)
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+GH_REPO = "catalincherciu90-cdesign/feed-produse"
+GH_WORKFLOW = "sync.yml"
+GH_REF = "claude/happy-cray-ubjmi1"
+
 [[kv_namespaces]]
 binding = "FEED_KV"
 id = "PUNE_AICI_ID_KV"
@@ -15,3 +25,5 @@ id = "PUNE_AICI_ID_KV"
 # din secretele GitHub cu același nume, dacă există:
 #   ADMIN_TOKEN         token pentru /status
 #   CLIENT_FEED_TOKEN   token cerut clienților la /feed.xml?token=...
+#   CEL_FEED_TOKEN      token cerut la /cel.xml?token=...
+#   GH_DISPATCH_TOKEN   token GitHub (fine-grained, Actions: Read and write) pentru cron

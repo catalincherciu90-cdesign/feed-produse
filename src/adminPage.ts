@@ -381,7 +381,7 @@ function renderStatus() {
   root.appendChild(head);
 
   var mins = st.startedAt ? (Date.now() - new Date(st.startedAt).getTime()) / 60000 : 0;
-  if (mins > 60) root.appendChild(el('div', { class: 'alert warn', text: 'Ultima sincronizare a fost acum peste o oră. Verifică în GitHub Actions dacă rulările programate sunt active (GitHub le oprește după 60 de zile fără activitate în repo).' }));
+  if (mins > 60) root.appendChild(el('div', { class: 'alert warn', text: 'Ultima sincronizare a fost acum peste o oră. Sincronizarea e pornită la 15 minute de cron-ul Worker-ului Cloudflare: verifică în Cloudflare (Workers > feed-produse > Logs) dacă apare o eroare, de exemplu tokenul GH_DISPATCH_TOKEN lipsă sau expirat, și în GitHub Actions dacă rularea a eșuat.' }));
   if (st.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare: ' + st.error }));
   if (st.cel && st.cel.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare API CEL: ' + st.cel.error }));
   (st.warnings || []).forEach(function (w) { root.appendChild(el('div', { class: 'alert warn', text: w })); });

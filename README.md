@@ -11,7 +11,8 @@ La fiecare 15 minute:
 ## Arhitectură (0 lei/lună)
 
 ```
-feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
+Worker cron (la 15 min) ──► pornește GitHub Actions
+feed XML ──► GitHub Actions ──► API CEL.ro (stoc, opțional)
                      │
                      └──► Cloudflare KV ◄── Worker gratuit ──► /feed.xml pentru clienți
 ```
@@ -20,12 +21,12 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 |---|---|---|
 | GitHub Actions | partea grea: citește 8,4 MB de XML, trimite pe CEL | minutele sunt gratuite pe repouri publice ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-actions)) |
 | Cloudflare KV | păstrează feed-urile, starea, istoricul, setările și excepțiile | ~480 scrieri/zi din 1.000 gratuite ([Cloudflare](https://developers.cloudflare.com/kv/platform/limits/)) |
-| Cloudflare Worker | servește `/feed.xml` | doar citește din KV, consum minim de CPU, încape în planul gratuit |
+| Cloudflare Worker | servește `/feed.xml`, `/cel.xml`, panoul `/admin`; cron-ul lui pornește sincronizarea la 15 minute | doar citește din KV și face un apel la GitHub, consum minim de CPU, încape în planul gratuit (maximum 5 cron-uri pe cont) |
 
 ### Limite de știut
 
-- **GitHub poate întârzia rulările programate** la ore aglomerate, deci „la 15 minute” poate însemna uneori 20-30 de minute.
-- **GitHub oprește automat rulările programate dacă repoul nu are activitate 60 de zile** ([GitHub](https://docs.github.com/en/actions/using-workflows/disabling-and-enabling-a-workflow)). Se repornesc din tab-ul **Actions**, cu butonul **Enable workflow**.
+- **Sincronizarea e pornită de cron-ul Worker-ului Cloudflare, nu de programarea GitHub.** Programarea GitHub (`on: schedule`) nu a pornit deloc în primele ore, iar în 2026 există multe raportări de rulări programate pierdute ([discuție GitHub](https://github.com/orgs/community/discussions/185355)). Pornirea prin `workflow_dispatch` nu e afectată nici de oprirea automată după 60 de zile fără activitate, care se aplică doar rulărilor programate.
+- Cron-ul are nevoie de secretul `GH_DISPATCH_TOKEN` (vezi mai jos). Fără el, sincronizarea rulează doar manual, iar panoul arată un avertisment după o oră.
 - Repoul e public, deci codul se vede. Datele sensibile (link-ul feed-ului, parola CEL, token-urile) stau în **Secrets** și nu apar nicăieri.
 
 ## Regulile, pe scurt
@@ -99,6 +100,9 @@ Totul se face din browser, nu trebuie instalat nimic pe calculator.
 | `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru panoul `/admin` și `/status` | Worker (necesar pentru panou) |
 | `CLIENT_FEED_TOKEN` | dacă vrei ca feed-ul clienților să ceară `?token=...` | Worker (opțional) |
 | `CEL_FEED_TOKEN` | dacă vrei ca `/cel.xml` să ceară `?token=...` (recomandat: conține stocul real) | Worker (opțional) |
+| `GH_DISPATCH_TOKEN` | token GitHub fine-grained: doar repo-ul `feed-produse`, permisiunea **Actions: Read and write** | Worker (necesar pentru sincronizarea automată) |
+
+**Tokenul `GH_DISPATCH_TOKEN`:** GitHub > poza de profil > **Settings** > **Developer settings** > **Personal access tokens** > **Fine-grained tokens** > **Generate new token**. La **Repository access** alegi **Only select repositories** > `feed-produse`. La **Permissions** > **Repository permissions** > **Actions** alegi **Read and write**. Pune-i o dată de expirare, de exemplu un an, și notează-ți să-l reînnoiești.
 
 Apoi publică Worker-ul: **Actions > Deploy Worker > Run workflow**. Workflow-ul rulează testele, pune id-ul KV în configurare, face deploy și setează secretele Worker-ului. Rulează automat și la orice modificare a codului Worker-ului.
 
