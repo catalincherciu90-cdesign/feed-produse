@@ -5,7 +5,7 @@ Sincronizare automată, fără costuri, pentru feed-ul de produse spotvisionelec
 La fiecare 15 minute:
 
 1. **citește feed-ul XML** de produse;
-2. **actualizează stocul pe CEL.ro**: produsele cu **sub 10 bucăți primesc stoc 0**, deci nu pot fi comandate. Restul primesc stocul real;
+2. **actualizează stocul pe CEL.ro**, ca să fie mereu identic cu feed-ul tău: produsele cu **sub 10 bucăți primesc stoc 0**, deci nu pot fi comandate. Restul primesc stocul real;
 3. **publică un feed XML pentru clienți**: **stoc ≥ 10 = disponibil**, **sub 10 = indisponibil momentan**. Feed-ul nu conține stocul real.
 
 ## Arhitectură (0 lei/lună)
@@ -112,7 +112,7 @@ Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze p
 - Dacă feed-ul sursă nu se poate citi, nu se schimbă nimic.
 - Dacă feed-ul are brusc cu peste 50% mai puține produse (`MAX_DROP_PERCENT`), sincronizarea se oprește. Asta previne golirea stocului pe CEL din cauza unui export greșit.
 - Rândul de titluri pe care exportul îl pune ca prim produs e ignorat.
-- Pe CEL se trimit doar produsele cu stocul schimbat, plus o resincronizare completă o dată pe zi.
+- La fiecare rulare se trimite pe CEL stocul tuturor produselor (`CEL_PUSH_ALL`), deci CEL arată mereu ce e în feed-ul tău, chiar dacă stocul s-a modificat între timp pe partea CEL. Cu `CEL_PUSH_ALL: "false"` se trimit doar produsele schimbate, plus o resincronizare completă pe zi.
 
 ## Endpoint-uri Worker
 

@@ -100,7 +100,8 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
       try {
         const pushed = (await getJson<Record<string, number>>(kv, KV_KEYS.celPushed)) ?? {};
         const lastFull = Number((await kv.get(KV_KEYS.celLastFull)) ?? 0);
-        const full = now.getTime() - lastFull > FULL_RESYNC_MS;
+        // CEL_PUSH_ALL: trimite tot stocul la fiecare rulare, ca CEL să oglindească mereu feed-ul sursă.
+        const full = config.celPushAll || now.getTime() - lastFull > FULL_RESYNC_MS;
         const plan = planCelUpdates(products, pushed, {
           minStock: config.celMinStock,
           buffer: config.celStockBuffer,

@@ -18,6 +18,7 @@ export interface Env {
 
   // CEL
   CEL_ENABLED?: string; // implicit "true"
+  CEL_PUSH_ALL?: string; // implicit "true": trimite toate produsele la fiecare rulare
   CEL_USERNAME?: string;
   CEL_PASSWORD?: string;
   CEL_API_URL?: string; // implicit https://api-mp.cel.ro/market_api/
@@ -38,6 +39,7 @@ export interface Config {
   zeroMissingOnCel: boolean;
   maxDropPercent: number;
   celEnabled: boolean;
+  celPushAll: boolean;
   celUsername?: string;
   celPassword?: string;
   celApiUrl: string;
@@ -82,6 +84,7 @@ export function loadConfig(env: Env): Config {
     zeroMissingOnCel: bool(env.ZERO_MISSING_ON_CEL, true),
     maxDropPercent: num(env.MAX_DROP_PERCENT, 50),
     celEnabled: bool(env.CEL_ENABLED, true),
+    celPushAll: bool(env.CEL_PUSH_ALL, true),
     celUsername: opt(env.CEL_USERNAME),
     celPassword: opt(env.CEL_PASSWORD),
     celApiUrl: apiUrl.endsWith('/') ? apiUrl : `${apiUrl}/`,

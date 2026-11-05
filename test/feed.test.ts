@@ -153,9 +153,14 @@ describe('runSync', () => {
     expect(s1.cel).toMatchObject({ mode: 'full', sent: 3, updated: 3 });
     expect(kv.store.get(KV_KEYS.feed)).toContain('<produs>');
 
-    // A doua rulare fără modificări: nu trimite nimic pe CEL.
+    // Implicit (CEL_PUSH_ALL): a doua rulare retrimite tot, ca CEL să oglindească feed-ul.
     const s2 = await runSync(config, kv, new Date('2026-11-05T10:15:00Z'));
-    expect(s2.cel).toMatchObject({ mode: 'diff', sent: 0 });
+    expect(s2.cel).toMatchObject({ mode: 'full', sent: 3 });
+
+    // Cu CEL_PUSH_ALL=false: a doua rulare fără modificări nu trimite nimic.
+    const diffConfig = loadConfig({ ...baseEnv, CEL_USERNAME: 'u', CEL_PASSWORD: 'p', CEL_PUSH_ALL: 'false' } as Env);
+    const s3 = await runSync(diffConfig, kv, new Date('2026-11-05T10:30:00Z'));
+    expect(s3.cel).toMatchObject({ mode: 'diff', sent: 0 });
     vi.unstubAllGlobals();
   });
 

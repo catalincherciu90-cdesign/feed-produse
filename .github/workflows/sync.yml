@@ -40,6 +40,7 @@ jobs:
           CEL_STOCK_BUFFER: "0" # bucăți rezervate, scăzute din stocul trimis pe CEL
           ZERO_MISSING_ON_CEL: "true" # produsele dispărute din feed primesc 0 pe CEL
           MAX_DROP_PERCENT: "50" # oprește tot dacă feed-ul scade brusc cu peste 50%
+          CEL_PUSH_ALL: "true" # trimite tot stocul la fiecare rulare: CEL = mereu feed-ul tău
           CEL_ENABLED: ${{ vars.CEL_ENABLED || 'false' }} # pornește CEL din Settings > Variables
           CEL_DEMO: ${{ vars.CEL_DEMO || 'false' }}
 
