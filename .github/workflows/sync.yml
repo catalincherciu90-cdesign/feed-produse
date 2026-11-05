@@ -18,13 +18,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Cât timp secretele nu sunt setate, sare peste rulare în loc să eșueze la 15 minute.
+      - name: Verifică configurarea
+        id: cfg
+        env:
+          SOURCE_URL: ${{ secrets.SOURCE_URL }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
+        run: |
+          missing=""
+          for v in SOURCE_URL CF_API_TOKEN CF_ACCOUNT_ID CF_KV_NAMESPACE_ID; do
+            [ -z "${!v}" ] && missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Sincronizare sărită, lipsesc secretele GitHub:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ready == 'true'
       - uses: actions/setup-node@v4
+        if: steps.cfg.outputs.ready == 'true'
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+        if: steps.cfg.outputs.ready == 'true'
       - run: npx tsx src/run.ts
+        if: steps.cfg.outputs.ready == 'true'
         env:
           # Secrete (Settings > Secrets and variables > Actions > Secrets)
           SOURCE_URL: ${{ secrets.SOURCE_URL }}
