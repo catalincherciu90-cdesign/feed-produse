@@ -60,6 +60,7 @@ jobs:
           # Reguli
           AVAILABLE_MIN_STOCK: "10" # feed clienți: stoc >= 10 disponibil, sub 10 indisponibil
           CEL_MIN_STOCK: "10" # CEL: sub 10 se trimite stoc 0, deci nu poate fi comandat
+          CEL_BLOCK_ZERO_PRICE: "true" # preț 0 sau lipsă => stoc 0 pe CEL
           CEL_STOCK_BUFFER: "0" # bucăți rezervate, scăzute din stocul trimis pe CEL
           ZERO_MISSING_ON_CEL: "true" # produsele dispărute din feed primesc 0 pe CEL
           MAX_DROP_PERCENT: "50" # oprește tot dacă feed-ul scade brusc cu peste 50%
@@ -73,4 +74,5 @@ jobs:
           FIELD_SKU: Product_Code
           FIELD_STOCK: Stock
           FIELD_NAME: Product_Name
+          FIELD_PRICE: PRET_LISTA # preț cu TVA
           CLIENT_FEED_EXTRA_FIELDS: ""

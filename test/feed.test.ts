@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
-import { buildCelFeed, celStock } from '../src/celFeed';
+import { buildCelFeed, celStock, celStockFor } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
 import { parseFeed, parseNumber } from '../src/source';
@@ -154,7 +154,7 @@ describe('runSync', () => {
     expect(s1.cel).toMatchObject({ mode: 'full', sent: 3, updated: 3 });
     expect(kv.store.get(KV_KEYS.feed)).toContain('<produs>');
     expect(kv.store.get(KV_KEYS.celFeed)).toContain('<catalog>');
-    expect(s1.celFeed).toMatchObject({ products: 4, orderable: 2 });
+    expect(s1.celFeed).toMatchObject({ products: 4, orderable: 1, blockedNoPrice: 2 }); // 0014 și 0015 nu au preț
 
     // Implicit (CEL_PUSH_ALL): a doua rulare retrimite tot, ca CEL să oglindească feed-ul.
     const s2 = await runSync(config, kv, new Date('2026-11-05T10:15:00Z'));
@@ -213,7 +213,7 @@ describe('feed CEL', () => {
   it('păstrează structura sursei, scoate rândul de titluri și transformă stocul', () => {
     const r = parseFeed(SAMPLE, loadConfig(baseEnv));
     const xml = buildCelFeed(r.rawItems, r.products, {
-      stockField: 'stoc', rootTag: r.tags.root, itemTag: r.tags.item, minStock: 10, buffer: 0,
+      stockField: 'stoc', rootTag: r.tags.root, itemTag: r.tags.item, minStock: 10, buffer: 0, requirePrice: false,
     });
     expect(r.tags).toEqual({ root: 'catalog', item: 'produs' });
     expect(xml.startsWith('<?xml')).toBe(true);
@@ -225,9 +225,18 @@ describe('feed CEL', () => {
     expect(xml.match(/<produs>/g)).toHaveLength(4);
   });
 
+  it('produsele fără preț valid primesc 0 pe CEL, chiar cu stoc mare', () => {
+    const rules = { minStock: 10, buffer: 0, requirePrice: true };
+    const base = { sku: 'A', name: '', stock: 600, extra: {} };
+    expect(celStockFor({ ...base, price: 0 }, rules)).toBe(0);
+    expect(celStockFor({ ...base, price: null }, rules)).toBe(0);
+    expect(celStockFor({ ...base, price: 10.89 }, rules)).toBe(600);
+    expect(celStockFor({ ...base, price: 0 }, { ...rules, requirePrice: false })).toBe(600);
+  });
+
   it('nu strică textele care conțin ]]>', () => {
     const xml = buildCelFeed([{ cod: 'A', desc: 'x ]]> y', stoc: '5' }], [{ sku: 'A', name: '', stock: 50, price: null, extra: {} }], {
-      stockField: 'stoc', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0,
+      stockField: 'stoc', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0, requirePrice: false,
     });
     const back = parseFeed(xml, loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'cod', FIELD_STOCK: 'stoc' } as unknown as Env));
     expect(back.rawItems[0].desc).toBe('x ]]> y');

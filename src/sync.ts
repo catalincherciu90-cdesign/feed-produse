@@ -1,5 +1,5 @@
 import { CelClient, type CelStockUpdate } from './cel';
-import { buildCelFeed, celStock } from './celFeed';
+import { buildCelFeed, celStockFor, hasValidPrice, type CelStockRules } from './celFeed';
 import { buildClientFeed, isAvailable } from './clientFeed';
 import type { Config } from './config';
 import { getJson, KV_KEYS, type KVStore } from './kv';
@@ -22,7 +22,7 @@ export interface SyncStatus {
     skippedHeader: number;
     fieldsUsed: Record<string, string | undefined>;
   };
-  celFeed?: { products: number; orderable: number; bytes: number };
+  celFeed?: { products: number; orderable: number; blockedNoPrice: number; bytes: number };
   cel?: {
     skipped?: string;
     mode?: 'diff' | 'full';
@@ -39,15 +39,15 @@ export interface SyncStatus {
 export function planCelUpdates(
   products: Product[],
   pushed: Record<string, number>,
-  opts: { minStock: number; buffer: number; zeroMissing: boolean; full: boolean },
+  opts: { minStock: number; buffer: number; zeroMissing: boolean; full: boolean; requirePrice?: boolean },
 ): { updates: CelStockUpdate[]; zeroed: string[] } {
   const updates: CelStockUpdate[] = [];
   const current = new Set<string>();
   for (const p of products) {
     current.add(p.sku);
     if (p.stock === null) continue; // nu trimitem nimic dacă stocul e ilizibil
-    // Sub prag => 0 pe CEL, ca produsul să nu poată fi comandat.
-    const stoc = p.stock < opts.minStock ? 0 : Math.max(0, p.stock - opts.buffer);
+    // Sub prag sau fără preț valid => 0 pe CEL, ca produsul să nu poată fi comandat.
+    const stoc = celStockFor(p, { minStock: opts.minStock, buffer: opts.buffer, requirePrice: !!opts.requirePrice });
     if (opts.full || pushed[p.sku] !== stoc) updates.push({ products_model: p.sku, stoc });
   }
   const zeroed: string[] = [];
@@ -94,19 +94,26 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
     // 2. Feed clienți
     await kv.put(KV_KEYS.feed, buildClientFeed(products, config.availableMinStock, status.startedAt));
 
+    // Reguli CEL: prețul se verifică doar dacă feed-ul are câmp de preț.
+    const rules: CelStockRules = {
+      minStock: config.celMinStock,
+      buffer: config.celStockBuffer,
+      requirePrice: config.celBlockZeroPrice && !!parsed.fieldsUsed.price,
+    };
+
     // 2b. Feed pentru CEL (aceeași structură ca sursa, stoc 0 sub prag)
     if (config.celFeedEnabled) {
       const celXml = buildCelFeed(parsed.rawItems, products, {
         stockField: parsed.fieldsUsed.stock,
         rootTag: parsed.tags.root,
         itemTag: parsed.tags.item,
-        minStock: config.celMinStock,
-        buffer: config.celStockBuffer,
+        ...rules,
       });
       await kv.put(KV_KEYS.celFeed, celXml);
       status.celFeed = {
         products: products.length,
-        orderable: products.filter((p) => celStock(p.stock, config.celMinStock, config.celStockBuffer) > 0).length,
+        orderable: products.filter((p) => celStockFor(p, rules) > 0).length,
+        blockedNoPrice: rules.requirePrice ? products.filter((p) => !hasValidPrice(p)).length : 0,
         bytes: celXml.length,
       };
     }
@@ -124,6 +131,7 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
         const plan = planCelUpdates(products, pushed, {
           minStock: config.celMinStock,
           buffer: config.celStockBuffer,
+          requirePrice: rules.requirePrice,
           zeroMissing: config.zeroMissingOnCel,
           full,
         });

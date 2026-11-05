@@ -4,12 +4,30 @@
  * să rămână valabilă. Diferențe față de sursă:
  * - fără rândul de titluri și fără BOM la început
  * - câmpul de stoc e număr întreg; sub prag (implicit 10) devine 0, deci nu poate fi comandat
+ * - produsele cu preț 0 sau lipsă primesc stoc 0 (CEL_BLOCK_ZERO_PRICE)
  */
 import type { Product } from './source';
 
 export function celStock(stock: number | null, minStock: number, buffer: number): number {
   if (stock === null) return 0; // stoc necunoscut => nu poate fi comandat
   return stock < minStock ? 0 : Math.max(0, stock - buffer);
+}
+
+export interface CelStockRules {
+  minStock: number;
+  buffer: number;
+  /** true = produsele fără preț valid (lipsă sau 0) primesc stoc 0, ca să nu se vândă la 0 lei. */
+  requirePrice: boolean;
+}
+
+export function hasValidPrice(p: Product): boolean {
+  return p.price !== null && p.price > 0;
+}
+
+/** Stocul trimis pe CEL pentru un produs, după toate regulile. */
+export function celStockFor(p: Product, rules: CelStockRules): number {
+  if (rules.requirePrice && !hasValidPrice(p)) return 0;
+  return celStock(p.stock, rules.minStock, rules.buffer);
 }
 
 function cdata(value: string): string {
@@ -44,11 +62,11 @@ function renderNode(tag: string, value: unknown, indent: string): string {
 export function buildCelFeed(
   rawItems: Record<string, unknown>[],
   products: Product[],
-  opts: { stockField: string; rootTag: string; itemTag: string; minStock: number; buffer: number },
+  opts: { stockField: string; rootTag: string; itemTag: string } & CelStockRules,
 ): string {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', `<${opts.rootTag}>`];
   rawItems.forEach((item, i) => {
-    const copy: Record<string, unknown> = { ...item, [opts.stockField]: String(celStock(products[i].stock, opts.minStock, opts.buffer)) };
+    const copy: Record<string, unknown> = { ...item, [opts.stockField]: String(celStockFor(products[i], opts)) };
     lines.push(renderNode(opts.itemTag, copy, ''));
   });
   lines.push(`</${opts.rootTag}>`);

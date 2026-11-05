@@ -34,6 +34,7 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 |---|---|---|
 | 0 - 9 | 0 (nu se poate comanda) | `disponibil: nu`, „indisponibil momentan” |
 | 10 sau mai mult | stocul real | `disponibil: da`, „in stoc” |
+| orice stoc, dar preț 0 sau lipsă | 0 (nu se poate comanda) | după stoc |
 | produsul dispare din feed | 0 | nu mai apare |
 
 **Comenzile care trec sub prag sunt permise.** Dacă la sincronizare ai 12 bucăți, pe CEL apar 12. O comandă de 5 se plasează normal, chiar dacă rămâi cu 7. Pragul nu anulează comenzi, doar oprește comenzile noi: la următoarea sincronizare, stocul de 7 din feed devine 0 pe CEL. Pe CEL nu se poate comanda niciodată mai mult decât stocul real trimis.
@@ -52,7 +53,7 @@ Are **exact aceeași structură și aceleași câmpuri** ca feed-ul tău de pe s
 
 În adminul CEL înlocuiești linkul feed-ului cu cel de mai sus. Cât de des îl citește CEL depinde de setările lor (butonul cu ceasul de la feed).
 
-Limită: feed-ul tău nu conține preț. Dacă CEL cere prețul, trebuie adăugat în exportul de pe site.
+Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 21%) și e copiat neschimbat. **Produsele cu preț 0 sau fără preț primesc stoc 0 pe CEL** (`CEL_BLOCK_ZERO_PRICE`), ca să nu poată fi comandate la 0 lei.
 
 ## Feed-ul pentru clienți
 
