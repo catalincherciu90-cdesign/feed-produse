@@ -23,6 +23,7 @@ export interface SyncStatus {
     unavailable: number;
     missingStock: number;
     skippedNoSku: number;
+    skippedHeader: number;
     fieldsUsed: Record<string, string | undefined>;
   };
   cel?: {
@@ -86,6 +87,7 @@ export async function runSync(config: Config, kv: KVNamespace, now = new Date())
       unavailable: products.length - available,
       missingStock: products.filter((p) => p.stock === null).length,
       skippedNoSku: parsed.skippedNoSku,
+      skippedHeader: parsed.skippedHeader,
       fieldsUsed: parsed.fieldsUsed,
     };
 

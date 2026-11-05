@@ -81,6 +81,7 @@ export interface ParseResult {
   products: Product[];
   fieldsUsed: { sku: string; stock: string; name?: string; price?: string };
   skippedNoSku: number;
+  skippedHeader: number;
 }
 
 export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields' | 'clientFeedExtraFields'>): ParseResult {
@@ -114,10 +115,15 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const products: Product[] = [];
   const seen = new Set<string>();
   let skippedNoSku = 0;
+  let skippedHeader = 0;
   for (const item of items) {
     const sku = text(item[skuField]);
     if (!sku) {
       skippedNoSku++;
+      continue;
+    }
+    if (isHeaderRow(sku, skuField) && isHeaderRow(text(item[stockField]), stockField)) {
+      skippedHeader++; // unele exporturi pun rândul de titluri ca prim produs
       continue;
     }
     if (seen.has(sku)) continue; // primul câștigă la coduri duplicate
@@ -141,7 +147,14 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
     products,
     fieldsUsed: { sku: skuField, stock: stockField, name: nameField, price: priceField },
     skippedNoSku,
+    skippedHeader,
   };
+}
+
+/** "Product Code" în tag-ul <Product_Code> => rând de titluri, nu produs. */
+function isHeaderRow(value: string | undefined, field: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return value !== undefined && norm(value) === norm(field);
 }
 
 export async function fetchSource(config: Config): Promise<string> {

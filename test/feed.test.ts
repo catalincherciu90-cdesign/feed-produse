@@ -19,6 +19,7 @@ class MemKV {
 
 const SAMPLE = `<?xml version="1.0"?>
 <catalog>
+  <produs><cod>Cod</cod><denumire>Denumire</denumire><stoc>Stoc</stoc></produs>
   <produs><cod>0012</cod><denumire>Periuță &amp; pastă</denumire><stoc>25</stoc><pret>12,50</pret><ean>594</ean></produs>
   <produs><cod>0013</cod><denumire>Ață dentară</denumire><stoc>9</stoc><pret>8</pret></produs>
   <produs><cod>0014</cod><denumire>Exact 10</denumire><stoc>10</stoc></produs>
@@ -47,6 +48,7 @@ describe('parseFeed', () => {
     expect(r.products[0]).toMatchObject({ stock: 25, price: 12.5, extra: { ean: '594' } });
     expect(r.products[3].stock).toBeNull();
     expect(r.skippedNoSku).toBe(1);
+    expect(r.skippedHeader).toBe(1);
   });
 
   it('dă o eroare clară când nu găsește câmpul de stoc', () => {

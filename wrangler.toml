@@ -24,11 +24,11 @@ MAX_DROP_PERCENT = "50"
 CEL_ENABLED = "true"
 CEL_DEMO = "false"
 
-# Opționale: lasă gol pentru detectare automată.
-SOURCE_ITEM_PATH = ""
-FIELD_SKU = ""
-FIELD_STOCK = ""
-FIELD_NAME = ""
+# Câmpurile feed-ului spotvisionelectric.ro (gol = detectare automată).
+SOURCE_ITEM_PATH = "products.product"
+FIELD_SKU = "Product_Code"
+FIELD_STOCK = "Stock"
+FIELD_NAME = "Product_Name"
 FIELD_PRICE = ""
 # Câmpuri din feed-ul sursă copiate în feed-ul clienților, separate prin virgulă (ex. "ean,brand").
 CLIENT_FEED_EXTRA_FIELDS = ""

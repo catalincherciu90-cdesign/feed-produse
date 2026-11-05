@@ -51,6 +51,10 @@ Dacă structura e mai neobișnuită, setează `SOURCE_ITEM_PATH` (ex. `catalog.p
 - Produsele care dispar din feed primesc stoc 0 pe CEL (`ZERO_MISSING_ON_CEL`).
 - `CEL_STOCK_BUFFER` îți permite să păstrezi o rezervă: dacă e 10, pe CEL se trimite `stoc - 10`.
 
+## Cerință: planul Workers Paid (5 USD/lună)
+
+Pe planul gratuit, o rulare programată are voie la 10 ms de procesor. Planul Paid permite 30 de secunde ([limite Cloudflare](https://developers.cloudflare.com/workers/platform/limits/#cpu-time)). Doar citirea feed-ului spotvisionelectric.ro (8,4 MB, 5.678 produse) durează aproximativ 300 ms, deci pe planul gratuit rularea ar fi oprită.
+
 ## Instalare
 
 ```bash
