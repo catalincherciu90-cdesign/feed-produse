@@ -1,0 +1,26 @@
+{
+  "name": "feed-produse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sincronizare feed produse: stoc către CEL.ro și feed de disponibilitate pentru clienți (Cloudflare Worker).",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catalincherciu90-cdesign/feed-produse.git"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0"
+  }
+}
