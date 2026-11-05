@@ -1,18 +1,24 @@
 import { CelClient, type CelStockUpdate } from './cel';
-import { buildCelFeed, celStockFor, hasValidPrice, type CelStockRules } from './celFeed';
-import { buildClientFeed, isAvailable } from './clientFeed';
+import { buildCelFeed } from './celFeed';
+import { buildClientFeed } from './clientFeed';
 import type { Config } from './config';
+import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockRules, type Reason } from './decisions';
 import { getJson, KV_KEYS, type KVStore } from './kv';
+import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
 import { fetchSource, parseFeed, type Product } from './source';
 
 export { KV_KEYS };
 
 const FULL_RESYNC_MS = 24 * 3600 * 1000;
+export const HISTORY_SIZE = 96; // o zi la 15 minute
 
 export interface SyncStatus {
   startedAt: string;
   finishedAt?: string;
   ok: boolean;
+  settings?: Settings & { source: 'panou' | 'workflow' };
+  overrides?: number;
+  warnings?: string[];
   source?: {
     products: number;
     available: number;
@@ -35,19 +41,51 @@ export interface SyncStatus {
   error?: string;
 }
 
+/** O intrare compactă în istoric. */
+export interface HistoryEntry {
+  t: string; // startedAt
+  ok: boolean;
+  products?: number;
+  available?: number;
+  celOrderable?: number;
+  error?: string;
+}
+
+/** Rând în lista de produse din panou: [cod, nume, stoc, preț, stoc CEL, motiv CEL, disponibil clienți, motiv clienți] */
+export type SnapshotRow = [string, string, number | null, number | null, number, Reason, 0 | 1, Reason];
+
+export interface Snapshot {
+  generatedAt: string;
+  settings: Settings;
+  priceField: boolean;
+  rows: SnapshotRow[];
+}
+
 /** Calculează ce trebuie trimis pe CEL. Funcție pură, testabilă. */
 export function planCelUpdates(
   products: Product[],
   pushed: Record<string, number>,
-  opts: { minStock: number; buffer: number; zeroMissing: boolean; full: boolean; requirePrice?: boolean },
+  opts: {
+    minStock: number;
+    buffer: number;
+    zeroMissing: boolean;
+    full: boolean;
+    requirePrice?: boolean;
+    overrides?: Overrides;
+  },
 ): { updates: CelStockUpdate[]; zeroed: string[] } {
   const updates: CelStockUpdate[] = [];
   const current = new Set<string>();
   for (const p of products) {
     current.add(p.sku);
     if (p.stock === null) continue; // nu trimitem nimic dacă stocul e ilizibil
-    // Sub prag sau fără preț valid => 0 pe CEL, ca produsul să nu poată fi comandat.
-    const stoc = celStockFor(p, { minStock: opts.minStock, buffer: opts.buffer, requirePrice: !!opts.requirePrice });
+    // Sub prag, fără preț valid sau blocat din panou => 0 pe CEL.
+    const stoc = celStockFor(p, {
+      minStock: opts.minStock,
+      buffer: opts.buffer,
+      requirePrice: !!opts.requirePrice,
+      overrides: opts.overrides,
+    });
     if (opts.full || pushed[p.sku] !== stoc) updates.push({ products_model: p.sku, stoc });
   }
   const zeroed: string[] = [];
@@ -62,15 +100,85 @@ export function planCelUpdates(
   return { updates, zeroed };
 }
 
-export async function runSync(config: Config, kv: KVStore, now = new Date()): Promise<SyncStatus> {
+/** Setările din panou au prioritate față de cele din workflow. */
+export function applySettings(config: Config, s: Settings): Config {
+  return {
+    ...config,
+    availableMinStock: s.availableMinStock,
+    celMinStock: s.celMinStock,
+    celStockBuffer: s.celStockBuffer,
+    celBlockZeroPrice: s.celBlockZeroPrice,
+  };
+}
+
+export function settingsFromConfig(config: Config): Settings {
+  return {
+    availableMinStock: config.availableMinStock,
+    celMinStock: config.celMinStock,
+    celStockBuffer: config.celStockBuffer,
+    celBlockZeroPrice: config.celBlockZeroPrice,
+  };
+}
+
+export function buildSnapshot(
+  products: Product[],
+  settings: Settings,
+  rules: CelStockRules,
+  overrides: Overrides,
+  generatedAt: string,
+): Snapshot {
+  return {
+    generatedAt,
+    settings,
+    priceField: rules.requirePrice || products.some((p) => p.price !== null),
+    rows: products.map((p) => {
+      const c = celDecision(p, rules);
+      const k = clientDecision(p, settings.availableMinStock, overrides);
+      return [p.sku, p.name, p.stock, p.price, c.stock, c.reason, k.available ? 1 : 0, k.reason];
+    }),
+  };
+}
+
+async function loadAdmin(kv: KVStore, config: Config, warnings: string[]) {
+  let settings = settingsFromConfig(config);
+  let source: 'panou' | 'workflow' = 'workflow';
+  const rawSettings = await kv.get(KV_KEYS.settings);
+  if (rawSettings) {
+    try {
+      settings = validateSettings(JSON.parse(rawSettings));
+      source = 'panou';
+    } catch (e) {
+      warnings.push(`Setările din panou sunt invalide și au fost ignorate: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const overrides = parseOverrides(await kv.get(KV_KEYS.overrides));
+  return { settings, source, overrides };
+}
+
+async function previousCount(kv: KVStore): Promise<number> {
+  const history = (await getJson<HistoryEntry[]>(kv, KV_KEYS.history)) ?? [];
+  const last = history.find((h) => typeof h.products === 'number' && h.products > 0);
+  if (last?.products) return last.products;
+  return Number((await kv.get(KV_KEYS.lastCount)) ?? 0); // compatibilitate cu versiunea fără istoric
+}
+
+export async function runSync(baseConfig: Config, kv: KVStore, now = new Date()): Promise<SyncStatus> {
   const status: SyncStatus = { startedAt: now.toISOString(), ok: false };
+  const warnings: string[] = [];
   try {
+    // 0. Setări și excepții din panou
+    const admin = await loadAdmin(kv, baseConfig, warnings);
+    const config = applySettings(baseConfig, admin.settings);
+    const overrides = admin.overrides;
+    status.settings = { ...admin.settings, source: admin.source };
+    status.overrides = Object.keys(overrides).length;
+
     // 1. Feed sursă
     const xml = await fetchSource(config);
     const parsed = parseFeed(xml, config);
     const products = parsed.products;
 
-    const prevCount = Number((await kv.get(KV_KEYS.lastCount)) ?? 0);
+    const prevCount = await previousCount(kv);
     if (prevCount > 0 && products.length < prevCount * (1 - config.maxDropPercent / 100)) {
       throw new Error(
         `Feed-ul are ${products.length} produse față de ${prevCount} la rularea anterioară. ` +
@@ -78,7 +186,7 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
       );
     }
 
-    const available = products.filter((p) => isAvailable(p.stock, config.availableMinStock)).length;
+    const available = products.filter((p) => clientDecision(p, config.availableMinStock, overrides).available).length;
     status.source = {
       products: products.length,
       available,
@@ -89,16 +197,15 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
       fieldsUsed: parsed.fieldsUsed,
     };
 
-    await kv.put(KV_KEYS.lastCount, String(products.length));
-
     // 2. Feed clienți
-    await kv.put(KV_KEYS.feed, buildClientFeed(products, config.availableMinStock, status.startedAt));
+    await kv.put(KV_KEYS.feed, buildClientFeed(products, config.availableMinStock, status.startedAt, overrides));
 
     // Reguli CEL: prețul se verifică doar dacă feed-ul are câmp de preț.
     const rules: CelStockRules = {
       minStock: config.celMinStock,
       buffer: config.celStockBuffer,
       requirePrice: config.celBlockZeroPrice && !!parsed.fieldsUsed.price,
+      overrides,
     };
 
     // 2b. Feed pentru CEL (aceeași structură ca sursa, stoc 0 sub prag)
@@ -118,7 +225,10 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
       };
     }
 
-    // 3. CEL
+    // 2c. Lista de produse pentru panou
+    await kv.put(KV_KEYS.snapshot, JSON.stringify(buildSnapshot(products, admin.settings, rules, overrides, status.startedAt)));
+
+    // 3. CEL prin API
     if (!config.celEnabled) {
       status.cel = { skipped: 'CEL_ENABLED=false' };
     } else {
@@ -132,6 +242,7 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
           minStock: config.celMinStock,
           buffer: config.celStockBuffer,
           requirePrice: rules.requirePrice,
+          overrides,
           zeroMissing: config.zeroMissingOnCel,
           full,
         });
@@ -158,7 +269,20 @@ export async function runSync(config: Config, kv: KVStore, now = new Date()): Pr
   } catch (e) {
     status.error = e instanceof Error ? e.message : String(e);
   }
+  if (warnings.length) status.warnings = warnings;
   status.finishedAt = new Date().toISOString();
   await kv.put(KV_KEYS.status, JSON.stringify(status));
+
+  // Istoric: cea mai nouă rulare prima, maximum HISTORY_SIZE intrări.
+  const history = (await getJson<HistoryEntry[]>(kv, KV_KEYS.history)) ?? [];
+  const entry: HistoryEntry = {
+    t: status.startedAt,
+    ok: status.ok,
+    products: status.source?.products,
+    available: status.source?.available,
+    celOrderable: status.celFeed?.orderable,
+    error: status.error ?? status.cel?.error,
+  };
+  await kv.put(KV_KEYS.history, JSON.stringify([entry, ...history].slice(0, HISTORY_SIZE)));
   return status;
 }

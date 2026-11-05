@@ -3,8 +3,7 @@ name: Deploy Worker
 on:
   push:
     paths:
-      - "src/index.ts"
-      - "src/kv.ts"
+      - "src/**"
       - "wrangler.toml"
       - "package.json"
       - "package-lock.json"

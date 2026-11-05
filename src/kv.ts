@@ -9,7 +9,11 @@ export const KV_KEYS = {
   status: 'sync:status',
   celPushed: 'cel:pushed', // { sku: stoc } ultima valoare trimisă cu succes
   celLastFull: 'cel:lastFull',
-  lastCount: 'source:lastCount', // nr. produse la ultima citire reușită
+  lastCount: 'source:lastCount', // vechi: nr. produse la ultima citire reușită (înlocuit de istoric)
+  history: 'sync:history', // ultimele rulări, cea mai nouă prima
+  settings: 'admin:settings', // setări editabile din panou
+  overrides: 'admin:overrides', // excepții pe produs din panou
+  snapshot: 'admin:products', // lista de produse pentru panou, scrisă la fiecare sincronizare
 } as const;
 
 export interface KVStore {

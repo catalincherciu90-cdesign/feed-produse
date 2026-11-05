@@ -243,3 +243,46 @@ describe('feed CEL', () => {
     expect(back.products[0].stock).toBe(50);
   });
 });
+
+describe('runSync cu setări și excepții din panou', () => {
+  it('aplică setările din panou, excepțiile și scrie istoricul și lista de produse', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.settings, JSON.stringify({ availableMinStock: 5, celMinStock: 5, celStockBuffer: 0, celBlockZeroPrice: false }));
+    kv.store.set(KV_KEYS.overrides, JSON.stringify({ '0012': { cel: 'block' }, '0013': { client: 'block' } }));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(SAMPLE)));
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv);
+    expect(s.ok).toBe(true);
+    expect(s.settings).toMatchObject({ availableMinStock: 5, source: 'panou' });
+    expect(s.overrides).toBe(2);
+    const snap = JSON.parse(kv.store.get(KV_KEYS.snapshot)!);
+    const row = (sku: string) => snap.rows.find((r: unknown[]) => r[0] === sku);
+    expect(row('0012').slice(4, 6)).toEqual([0, 'blocat']); // blocat manual pe CEL, deși are 25 buc.
+    expect(row('0013').slice(4, 8)).toEqual([9, 'ok', 0, 'blocat']); // 9 >= prag 5 pe CEL, dar blocat la clienți
+    expect(kv.store.get(KV_KEYS.feed)).toMatch(/<cod>0013<\/cod>[\s\S]*?<disponibil>nu<\/disponibil>/);
+    expect(kv.store.get(KV_KEYS.celFeed)).toMatch(/<!\[CDATA\[0012\]\]>[\s\S]*?<stoc><!\[CDATA\[0\]\]><\/stoc>/);
+    const history = JSON.parse(kv.store.get(KV_KEYS.history)!);
+    expect(history[0]).toMatchObject({ ok: true, products: 4 });
+    vi.unstubAllGlobals();
+  });
+
+  it('setările invalide din panou sunt ignorate cu avertisment', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.settings, '{"availableMinStock":-3}');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(SAMPLE)));
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv);
+    expect(s.ok).toBe(true);
+    expect(s.settings?.source).toBe('workflow');
+    expect(s.warnings?.[0]).toMatch(/invalide/);
+    vi.unstubAllGlobals();
+  });
+
+  it('verificarea de scădere bruscă folosește istoricul', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.history, JSON.stringify([{ t: 'x', ok: false }, { t: 'y', ok: true, products: 100 }]));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(SAMPLE)));
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false' } as Env), kv);
+    expect(s.error).toMatch(/oprit sincronizarea/);
+    expect(JSON.parse(kv.store.get(KV_KEYS.history)!)).toHaveLength(3);
+    vi.unstubAllGlobals();
+  });
+});

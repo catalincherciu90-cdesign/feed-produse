@@ -1,7 +1,8 @@
 /**
- * Worker Cloudflare (plan gratuit): doar servește feed-ul pentru clienți și statusul.
+ * Worker Cloudflare (plan gratuit): servește feed-urile, statusul și panoul de admin (/admin).
  * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
  */
+import { handleAdmin } from './admin';
 import { KV_KEYS } from './kv';
 
 interface WorkerEnv {
@@ -27,6 +28,11 @@ function tokenFrom(req: Request, url: URL): string {
 export default {
   async fetch(req: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(req.url);
+
+    // Panoul de admin: /admin și /admin/api/*
+    const admin = await handleAdmin(req, env, url);
+    if (admin) return admin;
+
     const token = tokenFrom(req, url);
 
     if (url.pathname === '/feed.xml' && req.method === 'GET') {

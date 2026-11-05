@@ -19,7 +19,7 @@ feed XML ──► GitHub Actions (la 15 min) ──► API CEL.ro (stoc)
 | Componentă | Ce face | De ce e gratuită |
 |---|---|---|
 | GitHub Actions | partea grea: citește 8,4 MB de XML, trimite pe CEL | minutele sunt gratuite pe repouri publice ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-actions)) |
-| Cloudflare KV | păstrează feed-ul și starea sincronizării | ~480 scrieri/zi din 1.000 gratuite ([Cloudflare](https://developers.cloudflare.com/kv/platform/limits/)) |
+| Cloudflare KV | păstrează feed-urile, starea, istoricul, setările și excepțiile | ~480 scrieri/zi din 1.000 gratuite ([Cloudflare](https://developers.cloudflare.com/kv/platform/limits/)) |
 | Cloudflare Worker | servește `/feed.xml` | doar citește din KV, consum minim de CPU, încape în planul gratuit |
 
 ### Limite de știut
@@ -95,7 +95,7 @@ Totul se face din browser, nu trebuie instalat nimic pe calculator.
 | `SOURCE_URL` | link-ul feed-ului XML | sincronizare |
 | `CEL_USERNAME` | user API CEL | sincronizare |
 | `CEL_PASSWORD` | parolă API CEL | sincronizare |
-| `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru `/status` | Worker (opțional) |
+| `ADMIN_TOKEN` | o parolă lungă inventată de tine, pentru panoul `/admin` și `/status` | Worker (necesar pentru panou) |
 | `CLIENT_FEED_TOKEN` | dacă vrei ca feed-ul clienților să ceară `?token=...` | Worker (opțional) |
 | `CEL_FEED_TOKEN` | dacă vrei ca `/cel.xml` să ceară `?token=...` (recomandat: conține stocul real) | Worker (opțional) |
 
@@ -118,13 +118,29 @@ Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze p
 - Rândul de titluri pe care exportul îl pune ca prim produs e ignorat.
 - La fiecare rulare se trimite pe CEL stocul tuturor produselor (`CEL_PUSH_ALL`), deci CEL arată mereu ce e în feed-ul tău, chiar dacă stocul s-a modificat între timp pe partea CEL. Cu `CEL_PUSH_ALL: "false"` se trimit doar produsele schimbate, plus o resincronizare completă pe zi.
 
+## Panoul de admin
+
+Adresa: **https://feed-produse.catalincherciu90.workers.dev/admin**. Te loghezi cu `ADMIN_TOKEN`, secretul din GitHub. Sesiunea ține până închizi tab-ul.
+
+| Tab | Ce face |
+|---|---|
+| **Status** | ultima sincronizare (reușită sau nu, erori), cifrele principale, linkurile feed-urilor cu buton de copiere, istoricul ultimelor 96 de rulări (o zi) |
+| **Produse** | toate produsele, cu căutare după cod sau nume și filtre: comandabile pe CEL, sub prag, preț 0, blocate manual, disponibile la clienți. Pentru fiecare produs vezi stocul real, prețul, ce primește CEL și de ce |
+| **Setări** | pragul pentru clienți, pragul pentru CEL, rezerva CEL, blocarea prețului 0. Au prioritate față de valorile din workflow. „Revino la valorile din workflow” le șterge |
+| **Excepții** | regulile pe produs: **Blochează** (stoc 0 pe CEL / indisponibil la clienți) sau **Fără prag** (se vinde și sub prag, dacă are stoc). Regula prețului 0 rămâne activă și cu „Fără prag” |
+
+Orice modificare din panou se aplică **la următoarea sincronizare** (maximum 15 minute). Până atunci, produsul apare marcat „se aplică la următoarea sincronizare”.
+
+Panoul rulează pe planul gratuit Cloudflare. Lista de produse e generată de sincronizare, iar filtrarea se face în browser.
+
 ## Endpoint-uri Worker
 
 | Cale | Acces | Ce face |
 |---|---|---|
 | `/feed.xml` | public (sau `CLIENT_FEED_TOKEN`) | feed-ul pentru clienți |
 | `/cel.xml` | public (sau `CEL_FEED_TOKEN`) | feed-ul pentru CEL |
-| `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări |
+| `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări (JSON) |
+| `/admin` | `ADMIN_TOKEN` | panoul de admin |
 
 ## Dezvoltare
 

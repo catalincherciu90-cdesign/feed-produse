@@ -1,3 +1,5 @@
+import { clientDecision } from './decisions';
+import type { Overrides } from './rules';
 import type { Product } from './source';
 
 export function isAvailable(stock: number | null, minStock: number): boolean {
@@ -23,13 +25,13 @@ function tagName(field: string): string {
 /**
  * Feed pentru clienți. Nu expune stocul real, doar dacă produsul se poate cumpăra.
  */
-export function buildClientFeed(products: Product[], minStock: number, generatedAt: string): string {
+export function buildClientFeed(products: Product[], minStock: number, generatedAt: string, overrides?: Overrides): string {
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<produse generat="${esc(generatedAt)}" total="${products.length}">`,
   ];
   for (const p of products) {
-    const ok = isAvailable(p.stock, minStock);
+    const ok = clientDecision(p, minStock, overrides).available;
     lines.push('  <produs>');
     lines.push(`    <cod>${esc(p.sku)}</cod>`);
     if (p.name) lines.push(`    <nume>${esc(p.name)}</nume>`);
