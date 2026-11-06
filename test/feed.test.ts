@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
-import { bigImageUrl, buildCelFeed, celStock, celStockFor, priceWithGreenTax } from '../src/celFeed';
+import { bigImageUrl, buildCelFeed, celStock, celStockFor, collapseDuplicateTags, priceWithGreenTax } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
 import { countGallery, parseFeed, parseNumber } from '../src/source';
@@ -394,5 +394,31 @@ describe('feed CEL: preț cu taxa verde inclusă', () => {
     expect(xml).toMatch(/<PRET_LISTA><!\[CDATA\[72\.6\]\]><\/PRET_LISTA>\n\s*<PRET_FINAL><!\[CDATA\[76\.84\]\]><\/PRET_FINAL>\n\s*<\/product>/);
     expect(xml).toContain('<PRET_FINAL><![CDATA[0.00]]></PRET_FINAL>');
     expect(xml).not.toMatch(/GreenTax|taxa|verde/i); // nimic despre taxa verde în feed-ul CEL
+  });
+});
+
+describe('tag-uri repetate în același produs (Gallery_Images de două ori)', () => {
+  const XML = `<products>
+<product><Product_Code>Product Code</Product_Code><Gallery_Images>Gallery Images</Gallery_Images><Stock>Stock</Stock><EAN>EAN</EAN><Gallery_Images>Gallery Images</Gallery_Images></product>
+<product><Product_Code>A</Product_Code><Gallery_Images><![CDATA[https://s/1.jpg#https://s/2.jpg]]></Gallery_Images><Stock>50</Stock><EAN>5949097700002</EAN><Gallery_Images><![CDATA[https://s/1.jpg#https://s/2.jpg]]></Gallery_Images></product>
+<product><Product_Code>B</Product_Code><Gallery_Images><![CDATA[]]></Gallery_Images><Stock>50</Stock><EAN></EAN><Gallery_Images><![CDATA[]]></Gallery_Images></product>
+</products>`;
+  const cfg = loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_GALLERY: 'Gallery_Images' } as unknown as Env);
+
+  it('numără corect galeria și scoate rândul de titluri', () => {
+    const r = parseFeed(XML, cfg);
+    expect(r.skippedHeader).toBe(1);
+    expect(r.products.map((p) => p.galleryCount)).toEqual([2, 0]);
+  });
+
+  it('în feed-ul CEL, tag-ul repetat identic apare o singură dată', () => {
+    const r = parseFeed(XML, cfg);
+    const xml = buildCelFeed(r.rawItems, r.products, { stockField: 'Stock', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0, requirePrice: false });
+    expect(xml.match(/<Gallery_Images>/g)).toHaveLength(2); // câte unul la fiecare din cele 2 produse
+    expect(xml).toContain('<EAN><![CDATA[5949097700002]]></EAN>');
+  });
+
+  it('copiile diferite se păstrează toate', () => {
+    expect(collapseDuplicateTags({ a: ['x', 'x'], b: ['x', 'y'], c: 'z' })).toEqual({ a: 'x', b: ['x', 'y'], c: 'z' });
   });
 });

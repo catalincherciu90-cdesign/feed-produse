@@ -31,6 +31,14 @@ function text(v: unknown): string | undefined {
   if (v === undefined || v === null) return undefined;
   if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v).trim();
   if (isObj(v) && '#text' in v) return text(v['#text']);
+  // Tag repetat în același produs (ex. Gallery_Images de două ori): primul care are conținut.
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const t = text(x);
+      if (t) return t;
+    }
+    return v.length ? text(v[0]) : undefined;
+  }
   return undefined;
 }
 

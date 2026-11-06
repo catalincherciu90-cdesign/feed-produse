@@ -3,6 +3,7 @@
  * Păstrează exact structura și câmpurile feed-ului sursă, ca maparea configurată în CEL
  * să rămână valabilă. Diferențe față de sursă:
  * - fără rândul de titluri și fără BOM la început
+ * - tag-urile repetate identic în același produs apar o singură dată
  * - câmpul de stoc e număr întreg; sub prag (implicit 10) devine 0, deci nu poate fi comandat
  * - produsele cu preț 0 sau lipsă primesc stoc 0 (CEL_BLOCK_ZERO_PRICE)
  * - excepțiile din panoul de admin (blocat / fără prag) au prioritate
@@ -88,6 +89,23 @@ function withField(item: Record<string, unknown>, after: string, key: string, va
   return out;
 }
 
+/**
+ * Unele exporturi repetă același tag în produs (ex. Gallery_Images de două ori, cu același conținut).
+ * Păstrăm o singură apariție când toate copiile sunt identice; dacă diferă, le lăsăm pe toate.
+ */
+export function collapseDuplicateTags(item: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(item)) {
+    if (Array.isArray(v) && v.length > 1) {
+      const first = JSON.stringify(v[0]);
+      out[k] = v.every((x) => JSON.stringify(x) === first) ? v[0] : v;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 function textOf(v: unknown): string {
   if (typeof v === 'string' || typeof v === 'number') return String(v).trim();
   if (v && typeof v === 'object' && '#text' in v) return textOf((v as Record<string, unknown>)['#text']);
@@ -109,7 +127,7 @@ export function buildCelFeed(
 ): string {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', `<${opts.rootTag}>`];
   rawItems.forEach((item, i) => {
-    let copy: Record<string, unknown> = { ...item, [opts.stockField]: String(celStockFor(products[i], opts)) };
+    let copy: Record<string, unknown> = { ...collapseDuplicateTags(item), [opts.stockField]: String(celStockFor(products[i], opts)) };
     if (opts.bigImage) {
       const src = textOf(item[opts.bigImage.from]);
       copy = withField(copy, opts.bigImage.from, opts.bigImage.to, src ? bigImageUrl(src) : '');
