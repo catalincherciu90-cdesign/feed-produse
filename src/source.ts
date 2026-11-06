@@ -9,6 +9,7 @@ export interface Product {
   image?: string; // linkul imaginii principale (miniatura din feed)
   galleryCount?: number; // câte poze are în galerie (linkuri separate prin #)
   greenTax?: number | null; // taxa verde (cu TVA)
+  ean?: string; // cod de bare, așa cum vine din feed
   extra: Record<string, string>;
 }
 
@@ -18,6 +19,7 @@ const NAME_CANDIDATES = ['nume', 'name', 'denumire', 'title', 'titlu', 'g:title'
 const IMAGE_CANDIDATES = ['size_200_x_200', 'image', 'imagine', 'poza', 'g:image_link', 'image_link', 'picture'];
 const GALLERY_CANDIDATES = ['gallery_images', 'gallery', 'galerie', 'images'];
 const GREEN_TAX_CANDIDATES = ['greentax', 'green_tax', 'taxa_verde', 'taxaverde', 'eco_tax', 'ecotax'];
+const EAN_CANDIDATES = ['ean', 'ean13', 'gtin', 'g:gtin', 'barcode', 'cod_bare', 'codbare'];
 const PRICE_CANDIDATES = ['pret', 'price', 'pret_vanzare', 'g:price', 'pretf'];
 
 type Obj = Record<string, unknown>;
@@ -97,7 +99,7 @@ export interface ParseResult {
   rawItems: Record<string, unknown>[];
   /** Numele tag-urilor: element produs și rădăcină, pentru a păstra structura. */
   tags: { root: string; item: string };
-  fieldsUsed: { sku: string; stock: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string };
+  fieldsUsed: { sku: string; stock: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string; ean?: string };
   skippedNoSku: number;
   skippedHeader: number;
 }
@@ -129,6 +131,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const imageField = pickField(items, config.fields.image, IMAGE_CANDIDATES);
   const galleryField = pickField(items, config.fields.gallery, GALLERY_CANDIDATES);
   const greenTaxField = pickField(items, config.fields.greenTax, GREEN_TAX_CANDIDATES);
+  const eanField = pickField(items, config.fields.ean, EAN_CANDIDATES);
   const sample = Object.keys(items[0]).join(', ');
   if (!skuField) throw new Error(`Nu am identificat câmpul de cod produs. Setează FIELD_SKU. Câmpuri găsite: ${sample}`);
   if (!stockField) throw new Error(`Nu am identificat câmpul de stoc. Setează FIELD_STOCK. Câmpuri găsite: ${sample}`);
@@ -165,6 +168,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       image: (imageField && text(item[imageField])) || undefined,
       galleryCount: galleryField ? countGallery(text(item[galleryField])) : undefined,
       greenTax: greenTaxField ? parseNumber(text(item[greenTaxField])) : undefined,
+      ean: eanField ? text(item[eanField]) ?? '' : undefined,
       extra,
     });
   }
@@ -181,6 +185,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       image: imageField,
       gallery: galleryField,
       greenTax: greenTaxField,
+      ean: eanField,
     },
     skippedNoSku,
     skippedHeader,

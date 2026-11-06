@@ -332,8 +332,8 @@ describe('poze, galerie și taxa verde în lista din panou', () => {
     const snap = buildSnapshot(r.products, { availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celMaxStock: 0, celBlockZeroPrice: false },
       { minStock: 10, buffer: 0, requirePrice: false }, {}, 'now');
     expect(snap.imageBase).toBe('https://s.ro/u/products/');
-    expect(snap.rows[0].slice(8)).toEqual(['1_LIST.jpg', 4.24, 2]);
-    expect(snap.rows[1].slice(8)).toEqual(['2_LIST.jpg', 0, 0]);
+    expect(snap.rows[0].slice(8, 11)).toEqual(['1_LIST.jpg', 4.24, 2]);
+    expect(snap.rows[1].slice(8, 11)).toEqual(['2_LIST.jpg', 0, 0]);
   });
 
   it('countGallery și commonPrefix', () => {

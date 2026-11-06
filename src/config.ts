@@ -11,6 +11,7 @@ export interface Env {
   FIELD_IMAGE?: string;
   FIELD_GALLERY?: string;
   FIELD_GREEN_TAX?: string;
+  FIELD_EAN?: string;
 
   // Reguli
   AVAILABLE_MIN_STOCK?: string; // implicit 10: stoc >= 10 = disponibil
@@ -46,7 +47,7 @@ export interface Config {
   sourceUrl: string;
   sourceAuth?: string;
   itemPath?: string;
-  fields: { sku?: string; stock?: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string };
+  fields: { sku?: string; stock?: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string; ean?: string };
   availableMinStock: number;
   celMinStock: number;
   celStockBuffer: number;
@@ -100,6 +101,7 @@ export function loadConfig(env: Env): Config {
       image: opt(env.FIELD_IMAGE),
       gallery: opt(env.FIELD_GALLERY),
       greenTax: opt(env.FIELD_GREEN_TAX),
+      ean: opt(env.FIELD_EAN),
     },
     availableMinStock: num(env.AVAILABLE_MIN_STOCK, 10),
     celMinStock: num(env.CEL_MIN_STOCK, num(env.AVAILABLE_MIN_STOCK, 10)),

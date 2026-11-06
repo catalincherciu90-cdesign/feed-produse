@@ -3,6 +3,7 @@ import { buildCelFeed } from './celFeed';
 import { buildClientFeed } from './clientFeed';
 import type { Config } from './config';
 import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockRules, type Reason } from './decisions';
+import { isValidGtin } from './ean';
 import { getJson, KV_KEYS, type KVStore } from './kv';
 import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
 import { fetchSource, parseFeed, type Product } from './source';
@@ -54,17 +55,21 @@ export interface HistoryEntry {
 /**
  * Rând în lista de produse din panou:
  * [cod, nume, stoc, preț, stoc CEL, motiv CEL, disponibil clienți, motiv clienți,
- *  imagine (relativ la imageBase), taxa verde, nr. poze în galerie]
+ *  imagine (relativ la imageBase), taxa verde, nr. poze în galerie,
+ *  EAN ('' = lipsă), EAN valid (1/0)]
  */
 export type SnapshotRow = [
   string, string, number | null, number | null, number, Reason, 0 | 1, Reason,
   string, number | null, number,
+  string, 0 | 1,
 ];
 
 export interface Snapshot {
   generatedAt: string;
   settings: Settings;
   priceField: boolean;
+  /** true dacă feed-ul are câmp de EAN. */
+  eanField: boolean;
   /** Prefixul comun al linkurilor de imagine (scurtează lista). */
   imageBase: string;
   rows: SnapshotRow[];
@@ -146,6 +151,7 @@ export function buildSnapshot(
     settings,
     priceField: rules.requirePrice || products.some((p) => p.price !== null),
     imageBase,
+    eanField: products.some((p) => p.ean !== undefined),
     rows: products.map((p) => {
       const c = celDecision(p, rules);
       const k = clientDecision(p, settings.availableMinStock, overrides);
@@ -153,6 +159,7 @@ export function buildSnapshot(
       return [
         p.sku, p.name, p.stock, p.price, c.stock, c.reason, k.available ? 1 : 0, k.reason,
         img, p.greenTax ?? null, p.galleryCount ?? 0,
+        p.ean ?? '', isValidGtin(p.ean) ? 1 : 0,
       ];
     }),
   };

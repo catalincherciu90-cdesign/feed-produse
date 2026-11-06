@@ -139,7 +139,7 @@ Adresa: **https://feed-produse.catalincherciu90.workers.dev/admin**. Te loghezi 
 | Tab | Ce face |
 |---|---|
 | **Status** | ultima sincronizare (reușită sau nu, erori), cifrele principale, linkurile feed-urilor cu buton de copiere, istoricul ultimelor 96 de rulări (o zi) |
-| **Produse** | toate produsele, cu căutare după cod sau nume și filtre: comandabile pe CEL, sub prag, preț 0, blocate manual, disponibile la clienți, cu/fără galerie foto, poza nu se încarcă. Pentru fiecare produs vezi poza (click = poza mare), dacă are galerie și câte poze, stocul real, prețul, taxa verde, ce primește CEL și de ce |
+| **Produse** | toate produsele, cu căutare după cod sau nume și filtre: comandabile pe CEL, sub prag, preț 0, blocate manual, disponibile la clienți, cu/fără galerie foto, poza nu se încarcă, EAN (lipsă, invalid, duplicat, corect). Pentru fiecare produs vezi poza (click = poza mare), dacă are galerie și câte poze, EAN-ul cu semn pentru „lipsă”, „invalid” (cifra de control greșită) sau „duplicat” (cu linkuri către celelalte produse cu același EAN), stocul real, prețul, taxa verde, ce primește CEL și de ce |
 | **Setări** | pragul pentru clienți, pragul pentru CEL, rezerva CEL, stocul maxim pe CEL, blocarea prețului 0. Au prioritate față de valorile din workflow. „Revino la valorile din workflow” le șterge |
 | **Excepții** | regulile pe produs: **Blochează** (stoc 0 pe CEL / indisponibil la clienți) sau **Fără prag** (se vinde și sub prag, dacă are stoc). Regula prețului 0 rămâne activă și cu „Fără prag” |
 

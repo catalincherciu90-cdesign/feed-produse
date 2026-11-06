@@ -141,7 +141,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     <section id="tab-status"></section>
     <section id="tab-products" class="hidden">
       <div class="toolbar">
-        <div class="grow"><label for="q">Caută după cod sau nume</label><input id="q" type="search" placeholder="ex. BL-1KMP sau priza"></div>
+        <div class="grow"><label for="q">Caută după cod, nume sau EAN</label><input id="q" type="search" placeholder="cod, nume sau EAN"></div>
         <div class="field"><label for="f-cel">CEL</label>
           <select id="f-cel">
             <option value="">Toate</option>
@@ -165,6 +165,15 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
             <option value="nogallery">Fără galerie</option>
             <option value="broken">Poza nu se încarcă</option>
           </select></div>
+        <div class="field"><label for="f-ean">EAN</label>
+          <select id="f-ean">
+            <option value="">Toate</option>
+            <option value="problem">Cu probleme (orice)</option>
+            <option value="missing">Lipsă</option>
+            <option value="invalid">Invalid</option>
+            <option value="duplicate">Duplicat</option>
+            <option value="ok">Corecte</option>
+          </select></div>
         <div class="field"><label for="f-ov">Excepții</label>
           <select id="f-ov">
             <option value="">Toate</option>
@@ -175,7 +184,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <div class="table-wrap">
         <table class="cards">
           <thead><tr>
-            <th>Poză</th><th>Cod</th><th>Nume</th><th class="num">Stoc</th><th class="num hide-sm">Preț</th>
+            <th>Poză</th><th>Cod</th><th>EAN</th><th>Nume</th><th class="num">Stoc</th><th class="num hide-sm">Preț</th>
             <th class="num hide-sm">Taxa verde</th><th>CEL</th><th>Clienți</th><th></th>
           </tr></thead>
           <tbody id="products-body"></tbody>
@@ -393,7 +402,7 @@ function loadProducts(attempt) {
   return api('GET', 'products').then(function (snap) {
     var want = expectedSnapshotTime();
     var stale = want && snap && snap.generatedAt && new Date(snap.generatedAt) < new Date(want);
-    state.snapshot = snap; state.productsMsg = '';
+    state.snapshot = snap; state.productsMsg = ''; buildEanIndex();
     if (stale && attempt < PRODUCTS_MAX_TRIES) {
       state.productsMsg = 'Se încarcă lista nouă de produse (Cloudflare actualizează datele în până la un minut)…';
       state.productsTimer = setTimeout(function () { loadProducts(attempt + 1); }, PRODUCTS_RETRY_MS);
@@ -488,7 +497,12 @@ function renderStatus() {
     stat('Comandabile pe CEL', fmtNum(cf.orderable), cf.products !== undefined ? fmtNum(cf.products - cf.orderable) + ' cu stoc 0' : ''),
     stat('Blocate pentru preț 0', fmtNum(cf.blockedNoPrice)),
     stat('Excepții active', fmtNum(nOv)),
-    stat('Fără galerie foto', galleryStat().value, galleryStat().hint)
+    stat('Fără galerie foto', galleryStat().value, galleryStat().hint),
+    (function () {
+      var e = eanStats();
+      return e ? stat('Probleme EAN', fmtNum(e.problems), fmtNum(e.missing) + ' lipsă · ' + fmtNum(e.invalid) + ' invalide · ' + fmtNum(e.dup) + ' duplicate')
+               : stat('Probleme EAN', '-', 'apare după sincronizare');
+    })()
   ]));
 
   var es = effectiveSettings();
@@ -526,10 +540,11 @@ function renderStatus() {
 }
 
 // ---------- Produse ----------
-var COL = { sku: 0, name: 1, stock: 2, price: 3, cel: 4, celReason: 5, client: 6, clientReason: 7, image: 8, greenTax: 9, gallery: 10 };
+var COL = { sku: 0, name: 1, stock: 2, price: 3, cel: 4, celReason: 5, client: 6, clientReason: 7, image: 8, greenTax: 9, gallery: 10, ean: 11, eanValid: 12 };
+state.eanIndex = {}; // EAN -> lista de coduri de produs care îl folosesc
 state.brokenImages = {}; // cod -> true pentru pozele care nu s-au încărcat (în această sesiune)
 
-['q', 'f-cel', 'f-client', 'f-ov', 'f-img'].forEach(function (id) {
+['q', 'f-cel', 'f-client', 'f-ov', 'f-img', 'f-ean'].forEach(function (id) {
   $(id).addEventListener(id === 'q' ? 'input' : 'change', function () { state.page = 0; applyFilters(); });
 });
 $('prev').addEventListener('click', function () { if (state.page > 0) { state.page--; renderProducts(); } });
@@ -537,12 +552,69 @@ $('next').addEventListener('click', function () { if ((state.page + 1) * PAGE_SI
 
 function normalize(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
+function buildEanIndex() {
+  var idx = {};
+  ((state.snapshot && state.snapshot.rows) || []).forEach(function (r) {
+    var e = r[COL.ean];
+    if (e) (idx[e] = idx[e] || []).push(r[COL.sku]);
+  });
+  state.eanIndex = idx;
+}
+/** Starea EAN a unui rând: null dacă lista nu are EAN (versiune veche). */
+function eanState(r) {
+  if (!state.snapshot || !state.snapshot.eanField || r.length <= COL.eanValid) return null;
+  var e = r[COL.ean];
+  if (!e) return { missing: true, invalid: false, dupes: [], ok: false };
+  var dupes = (state.eanIndex[e] || []).filter(function (s) { return s !== r[COL.sku]; });
+  var invalid = !r[COL.eanValid];
+  return { missing: false, invalid: invalid, dupes: dupes, ok: !invalid && !dupes.length };
+}
+function eanCell(r) {
+  var td = el('td', { 'data-label': 'EAN' });
+  var es = eanState(r);
+  if (es === null) { td.textContent = '-'; return td; }
+  var wrap = el('div');
+  if (es.missing) { wrap.appendChild(badge(['lipsă', 'b-warn'])); td.appendChild(wrap); return td; }
+  wrap.appendChild(el('div', { class: 'code small', text: r[COL.ean] }));
+  var marks = el('div', { class: 'row', style: 'gap:4px;margin-top:3px' });
+  if (es.invalid) marks.appendChild(el('span', { class: 'badge b-bad', title: 'Cifra de control nu se potrivește sau formatul nu e EAN-8/12/13/14', text: 'invalid' }));
+  if (es.dupes.length) {
+    marks.appendChild(el('span', {
+      class: 'badge b-warn',
+      title: 'Același EAN apare și la: ' + es.dupes.join(', '),
+      text: 'duplicat (' + (es.dupes.length + 1) + ')'
+    }));
+  }
+  if (marks.firstChild) wrap.appendChild(marks);
+  if (es.dupes.length) {
+    wrap.appendChild(el('div', { class: 'small muted', style: 'margin-top:2px' }, [
+      'și la ', el('button', { class: 'link small', type: 'button', text: es.dupes.slice(0, 3).join(', ') + (es.dupes.length > 3 ? '…' : ''), onclick: function () {
+        $('q').value = r[COL.ean]; state.page = 0; applyFilters();
+      } })
+    ]));
+  }
+  td.appendChild(wrap);
+  return td;
+}
+function eanStats() {
+  var rows = (state.snapshot && state.snapshot.rows) || [];
+  if (!rows.length || !state.snapshot.eanField || rows[0].length <= COL.eanValid) return null;
+  var missing = 0, invalid = 0, dup = 0;
+  rows.forEach(function (r) {
+    var es = eanState(r);
+    if (es.missing) missing++;
+    if (es.invalid) invalid++;
+    if (es.dupes.length) dup++;
+  });
+  return { missing: missing, invalid: invalid, dup: dup, problems: rows.filter(function (r) { return !eanState(r).ok; }).length };
+}
+
 function applyFilters() {
   var rows = (state.snapshot && state.snapshot.rows) || [];
   var q = normalize($('q').value.trim());
-  var fc = $('f-cel').value, fk = $('f-client').value, fo = $('f-ov').value, fi = $('f-img').value;
+  var fc = $('f-cel').value, fk = $('f-client').value, fo = $('f-ov').value, fi = $('f-img').value, fe = $('f-ean').value;
   state.filtered = rows.filter(function (r) {
-    if (q && normalize(r[COL.sku]).indexOf(q) < 0 && normalize(r[COL.name]).indexOf(q) < 0) return false;
+    if (q && normalize(r[COL.sku]).indexOf(q) < 0 && normalize(r[COL.name]).indexOf(q) < 0 && String(r[COL.ean] || '').indexOf(q) < 0) return false;
     if (fc === 'orderable' && r[COL.cel] <= 0) return false;
     if (fc === 'blocked' && r[COL.cel] > 0) return false;
     if (fc && fc !== 'orderable' && fc !== 'blocked' && r[COL.celReason] !== fc) return false;
@@ -551,6 +623,15 @@ function applyFilters() {
     if (fi === 'gallery' && !(r[COL.gallery] > 0)) return false;
     if (fi === 'nogallery' && r[COL.gallery] > 0) return false;
     if (fi === 'broken' && !(state.brokenImages[r[COL.sku]] || !r[COL.image])) return false;
+    if (fe) {
+      var es = eanState(r);
+      if (es === null) return false; // lista veche, fără EAN
+      if (fe === 'problem' && es.ok) return false;
+      if (fe === 'ok' && !es.ok) return false;
+      if (fe === 'missing' && !es.missing) return false;
+      if (fe === 'invalid' && !es.invalid) return false;
+      if (fe === 'duplicate' && !es.dupes.length) return false;
+    }
     return true;
   });
   renderProducts();
@@ -633,6 +714,7 @@ function renderProducts() {
     body.appendChild(el('tr', null, [
       thumbCell(r),
       el('td', { class: 'code', 'data-label': 'Cod', text: r[COL.sku] }),
+      eanCell(r),
       el('td', { 'data-label': 'Nume', text: r[COL.name] }),
       el('td', { class: 'num', 'data-label': 'Stoc', text: fmtNum(r[COL.stock]) }),
       el('td', { class: 'num hide-sm', 'data-label': 'Preț', text: fmtPrice(r[COL.price]) }),
@@ -642,8 +724,8 @@ function renderProducts() {
       oc
     ]));
   });
-  if (!state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '9', class: 'muted', text: state.productsMsg || 'Se încarcă lista de produse…' })]));
-  if (total === 0 && state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '9', class: 'muted', text: 'Niciun produs nu corespunde filtrelor.' })]));
+  if (!state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '10', class: 'muted', text: state.productsMsg || 'Se încarcă lista de produse…' })]));
+  if (total === 0 && state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '10', class: 'muted', text: 'Niciun produs nu corespunde filtrelor.' })]));
   var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   $('page-info').textContent = 'Pagina ' + (state.page + 1) + ' din ' + pages;
   $('prev').disabled = state.page === 0;
