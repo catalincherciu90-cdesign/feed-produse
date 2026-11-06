@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
-import { bigImageUrl, buildCelFeed, celStock, celStockFor } from '../src/celFeed';
+import { bigImageUrl, buildCelFeed, celStock, celStockFor, priceWithGreenTax } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
 import { countGallery, parseFeed, parseNumber } from '../src/source';
@@ -343,5 +343,32 @@ describe('poze, galerie și taxa verde în lista din panou', () => {
     expect(commonPrefix(['https://s/p/1.jpg', 'https://s/p/22.jpg'])).toBe('https://s/p/');
     expect(commonPrefix(['https://a/1.jpg', 'http://b/2.jpg'])).toBe('');
     expect(commonPrefix([])).toBe('');
+  });
+});
+
+describe('feed CEL: preț cu taxa verde inclusă', () => {
+  it('calculează și rotunjește corect', () => {
+    expect(priceWithGreenTax(72.6, 4.24)).toBe(76.84);
+    expect(priceWithGreenTax(10.89, 0.07)).toBe(10.96);
+    expect(priceWithGreenTax(0.1, 0.2)).toBe(0.3); // fără erori de virgulă mobilă
+    expect(priceWithGreenTax(19.36, 0)).toBe(19.36);
+    expect(priceWithGreenTax(19.36, null)).toBe(19.36);
+    expect(priceWithGreenTax(0, 0.07)).toBe(0); // preț 0 rămâne 0, nu 0,07
+    expect(priceWithGreenTax(null, 1)).toBe(0);
+  });
+
+  it('pune PRET_CU_TAXA_VERDE după PRET_LISTA și nu modifică prețul vechi', () => {
+    const XML = `<products>
+<product><Product_Code>A</Product_Code><Stock>50</Stock><PRET_LISTA>72.6</PRET_LISTA><GreenTax>4.24</GreenTax></product>
+<product><Product_Code>B</Product_Code><Stock>50</Stock><PRET_LISTA>0</PRET_LISTA><GreenTax>0.07</GreenTax></product>
+</products>`;
+    const cfg = loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_PRICE: 'PRET_LISTA', FIELD_GREEN_TAX: 'GreenTax' } as unknown as Env);
+    const r = parseFeed(XML, cfg);
+    const xml = buildCelFeed(r.rawItems, r.products, {
+      stockField: 'Stock', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0, requirePrice: true,
+      priceWithTax: { after: 'PRET_LISTA', to: 'PRET_CU_TAXA_VERDE' },
+    });
+    expect(xml).toMatch(/<PRET_LISTA><!\[CDATA\[72\.6\]\]><\/PRET_LISTA>\n\s*<PRET_CU_TAXA_VERDE><!\[CDATA\[76\.84\]\]><\/PRET_CU_TAXA_VERDE>\n\s*<GreenTax>/);
+    expect(xml).toContain('<PRET_CU_TAXA_VERDE><![CDATA[0.00]]></PRET_CU_TAXA_VERDE>');
   });
 });

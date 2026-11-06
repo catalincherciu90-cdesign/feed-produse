@@ -241,6 +241,10 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
       overrides,
     };
 
+    if (config.celPriceWithTaxField && !(parsed.fieldsUsed.price && parsed.fieldsUsed.greenTax)) {
+      warnings.push(`${config.celPriceWithTaxField} nu a fost generat: feed-ul nu are câmp de preț sau de taxă verde.`);
+    }
+
     // 2b. Feed pentru CEL (aceeași structură ca sursa, stoc 0 sub prag)
     if (config.celFeedEnabled) {
       const celXml = buildCelFeed(parsed.rawItems, products, {
@@ -248,6 +252,11 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         rootTag: parsed.tags.root,
         itemTag: parsed.tags.item,
         bigImage: config.celBigImage,
+        // Prețul cu taxa verde: doar dacă feed-ul are ambele câmpuri.
+        priceWithTax:
+          config.celPriceWithTaxField && parsed.fieldsUsed.price && parsed.fieldsUsed.greenTax
+            ? { after: parsed.fieldsUsed.price, to: config.celPriceWithTaxField }
+            : undefined,
         ...rules,
       });
       await kv.put(KV_KEYS.celFeed, celXml);

@@ -7,6 +7,7 @@
  * - produsele cu preț 0 sau lipsă primesc stoc 0 (CEL_BLOCK_ZERO_PRICE)
  * - excepțiile din panoul de admin (blocat / fără prag) au prioritate
  * - opțional, un câmp nou cu imaginea mare (CEL_BIG_IMAGE_FROM / CEL_BIG_IMAGE_FIELD)
+ * - opțional, un câmp nou cu prețul + taxa verde (CEL_PRICE_WITH_TAX_FIELD)
  */
 import { celStockFor, type CelStockRules } from './decisions';
 import type { Product } from './source';
@@ -51,6 +52,18 @@ export interface BigImageRule {
   to: string; // câmpul nou, ex. Image_Big
 }
 
+/** Câmp nou cu prețul final: preț + taxa verde (ambele cu TVA). */
+export interface PriceWithTaxRule {
+  after: string; // câmpul de preț din sursă, ex. PRET_LISTA (câmpul nou se pune după el)
+  to: string; // ex. PRET_CU_TAXA_VERDE
+}
+
+/** Preț + taxa verde, rotunjit la bani. Fără preț valid => 0 (produsul e oricum blocat pe CEL). */
+export function priceWithGreenTax(price: number | null, greenTax: number | null | undefined): number {
+  if (price === null || !(price > 0)) return 0;
+  return Math.round((price + (greenTax && greenTax > 0 ? greenTax : 0)) * 100) / 100;
+}
+
 export function bigImageUrl(url: string): string {
   return url.replace(/_LIST(\.[a-z0-9]+)(\?.*)?$/i, '_big$1$2');
 }
@@ -80,7 +93,13 @@ function textOf(v: unknown): string {
 export function buildCelFeed(
   rawItems: Record<string, unknown>[],
   products: Product[],
-  opts: { stockField: string; rootTag: string; itemTag: string; bigImage?: BigImageRule } & CelStockRules,
+  opts: {
+    stockField: string;
+    rootTag: string;
+    itemTag: string;
+    bigImage?: BigImageRule;
+    priceWithTax?: PriceWithTaxRule;
+  } & CelStockRules,
 ): string {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', `<${opts.rootTag}>`];
   rawItems.forEach((item, i) => {
@@ -88,6 +107,10 @@ export function buildCelFeed(
     if (opts.bigImage) {
       const src = textOf(item[opts.bigImage.from]);
       copy = withField(copy, opts.bigImage.from, opts.bigImage.to, src ? bigImageUrl(src) : '');
+    }
+    if (opts.priceWithTax) {
+      const total = priceWithGreenTax(products[i].price, products[i].greenTax);
+      copy = withField(copy, opts.priceWithTax.after, opts.priceWithTax.to, total.toFixed(2));
     }
     lines.push(renderNode(opts.itemTag, copy, ''));
   });
