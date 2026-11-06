@@ -85,5 +85,5 @@ jobs:
           CEL_BIG_IMAGE_FIELD: Image_Big
           # Feed CEL: PRET_LISTA conține prețul cu taxa verde inclusă (PRET_LISTA + GreenTax din sursă)
           CEL_PRICE_WITH_TAX_FIELD: PRET_LISTA
-          # Feed CEL: taxa verde nu apare separat (e deja inclusă în PRET_FINAL)
+          # Feed CEL: taxa verde nu apare separat (e deja inclusă în PRET_LISTA)
           CEL_FEED_DROP_FIELDS: GreenTax
