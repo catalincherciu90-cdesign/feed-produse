@@ -257,6 +257,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
           config.celPriceWithTaxField && parsed.fieldsUsed.price && parsed.fieldsUsed.greenTax
             ? { after: parsed.fieldsUsed.price, to: config.celPriceWithTaxField }
             : undefined,
+        dropFields: config.celFeedDropFields,
         ...rules,
       });
       await kv.put(KV_KEYS.celFeed, celXml);

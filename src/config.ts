@@ -37,7 +37,9 @@ export interface Env {
   CEL_BIG_IMAGE_FROM?: string; // ex. Size_200_x_200
   CEL_BIG_IMAGE_FIELD?: string; // ex. Image_Big
   // Feed CEL: câmp nou cu prețul + taxa verde (necesită FIELD_PRICE și FIELD_GREEN_TAX)
-  CEL_PRICE_WITH_TAX_FIELD?: string; // ex. PRET_CU_TAXA_VERDE
+  CEL_PRICE_WITH_TAX_FIELD?: string; // ex. PRET_FINAL
+  // Feed CEL: câmpuri din sursă care nu apar în feed, separate prin virgulă (ex. GreenTax)
+  CEL_FEED_DROP_FIELDS?: string;
 }
 
 export interface Config {
@@ -62,6 +64,7 @@ export interface Config {
   clientFeedExtraFields: string[];
   celBigImage?: { from: string; to: string };
   celPriceWithTaxField?: string;
+  celFeedDropFields: string[];
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -121,5 +124,6 @@ export function loadConfig(env: Env): Config {
         ? { from: opt(env.CEL_BIG_IMAGE_FROM)!, to: opt(env.CEL_BIG_IMAGE_FIELD)! }
         : undefined,
     celPriceWithTaxField: opt(env.CEL_PRICE_WITH_TAX_FIELD),
+    celFeedDropFields: (env.CEL_FEED_DROP_FIELDS ?? '').split(',').map((x) => x.trim()).filter(Boolean),
   };
 }

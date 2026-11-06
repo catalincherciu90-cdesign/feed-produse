@@ -8,6 +8,7 @@
  * - excepțiile din panoul de admin (blocat / fără prag) au prioritate
  * - opțional, un câmp nou cu imaginea mare (CEL_BIG_IMAGE_FROM / CEL_BIG_IMAGE_FIELD)
  * - opțional, un câmp nou cu prețul + taxa verde (CEL_PRICE_WITH_TAX_FIELD)
+ * - opțional, câmpuri scoase din feed (CEL_FEED_DROP_FIELDS, ex. GreenTax)
  */
 import { celStockFor, type CelStockRules } from './decisions';
 import type { Product } from './source';
@@ -99,6 +100,8 @@ export function buildCelFeed(
     itemTag: string;
     bigImage?: BigImageRule;
     priceWithTax?: PriceWithTaxRule;
+    /** Câmpuri din sursă care NU apar în feed-ul CEL (ex. GreenTax). */
+    dropFields?: string[];
   } & CelStockRules,
 ): string {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', `<${opts.rootTag}>`];
@@ -112,6 +115,7 @@ export function buildCelFeed(
       const total = priceWithGreenTax(products[i].price, products[i].greenTax);
       copy = withField(copy, opts.priceWithTax.after, opts.priceWithTax.to, total.toFixed(2));
     }
+    for (const f of opts.dropFields ?? []) delete copy[f];
     lines.push(renderNode(opts.itemTag, copy, ''));
   });
   lines.push(`</${opts.rootTag}>`);
