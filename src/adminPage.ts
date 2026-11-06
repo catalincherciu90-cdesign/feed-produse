@@ -80,6 +80,11 @@ button:disabled { opacity: .55; cursor: default; }
 .help { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .feed-link { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
 .feed-link code { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; overflow-wrap: anywhere; }
+.thumb { width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; display: block; }
+.thumb-cell { width: 76px; }
+.thumb-cell a { display: inline-block; }
+.thumb-missing { width: 56px; height: 56px; border: 2px dashed var(--bad); border-radius: 6px; color: var(--bad); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.1; background: var(--bad-bg); }
+.thumb-cell .badge { margin-top: 4px; font-size: 11px; }
 .pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; flex-wrap: wrap; }
 dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); padding: 20px; width: min(480px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(0,0,0,.45); }
@@ -97,6 +102,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
   table.cards td::before { content: attr(data-label); color: var(--muted); font-size: 12px; text-align: left; flex-shrink: 0; }
   table.cards td.code { font-weight: 700; }
   table.cards td.hide-sm { display: flex; }
+  table.cards td.thumb-cell { width: auto; }
   .bar { gap: 8px; }
 }
 </style>
@@ -152,6 +158,13 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
             <option value="1">Disponibile</option>
             <option value="0">Indisponibile</option>
           </select></div>
+        <div class="field"><label for="f-img">Poze</label>
+          <select id="f-img">
+            <option value="">Toate</option>
+            <option value="gallery">Cu galerie</option>
+            <option value="nogallery">Fără galerie</option>
+            <option value="broken">Poza nu se încarcă</option>
+          </select></div>
         <div class="field"><label for="f-ov">Excepții</label>
           <select id="f-ov">
             <option value="">Toate</option>
@@ -162,8 +175,8 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
       <div class="table-wrap">
         <table class="cards">
           <thead><tr>
-            <th>Cod</th><th>Nume</th><th class="num">Stoc</th><th class="num hide-sm">Preț</th>
-            <th>CEL</th><th>Clienți</th><th></th>
+            <th>Poză</th><th>Cod</th><th>Nume</th><th class="num">Stoc</th><th class="num hide-sm">Preț</th>
+            <th class="num hide-sm">Taxa verde</th><th>CEL</th><th>Clienți</th><th></th>
           </tr></thead>
           <tbody id="products-body"></tbody>
         </table>
@@ -437,6 +450,13 @@ function feedLink(title, path) {
     el('a', { href: path, target: '_blank', rel: 'noopener', class: 'small', text: 'Deschide' })]);
 }
 
+function galleryStat() {
+  var rows = (state.snapshot && state.snapshot.rows) || [];
+  if (!rows.length || rows[0].length <= COL.gallery) return { value: '-', hint: 'apare după sincronizare' };
+  var none = rows.filter(function (r) { return !(r[COL.gallery] > 0); }).length;
+  return { value: fmtNum(none), hint: 'din ' + fmtNum(rows.length) + ' produse' };
+}
+
 function renderStatus() {
   var root = $('tab-status'); clear(root);
   var ov = state.overview || {};
@@ -467,7 +487,8 @@ function renderStatus() {
     stat('Disponibile la clienți', fmtNum(src.available), src.unavailable !== undefined ? fmtNum(src.unavailable) + ' indisponibile' : ''),
     stat('Comandabile pe CEL', fmtNum(cf.orderable), cf.products !== undefined ? fmtNum(cf.products - cf.orderable) + ' cu stoc 0' : ''),
     stat('Blocate pentru preț 0', fmtNum(cf.blockedNoPrice)),
-    stat('Excepții active', fmtNum(nOv))
+    stat('Excepții active', fmtNum(nOv)),
+    stat('Fără galerie foto', galleryStat().value, galleryStat().hint)
   ]));
 
   var es = effectiveSettings();
@@ -505,9 +526,10 @@ function renderStatus() {
 }
 
 // ---------- Produse ----------
-var COL = { sku: 0, name: 1, stock: 2, price: 3, cel: 4, celReason: 5, client: 6, clientReason: 7 };
+var COL = { sku: 0, name: 1, stock: 2, price: 3, cel: 4, celReason: 5, client: 6, clientReason: 7, image: 8, greenTax: 9, gallery: 10 };
+state.brokenImages = {}; // cod -> true pentru pozele care nu s-au încărcat (în această sesiune)
 
-['q', 'f-cel', 'f-client', 'f-ov'].forEach(function (id) {
+['q', 'f-cel', 'f-client', 'f-ov', 'f-img'].forEach(function (id) {
   $(id).addEventListener(id === 'q' ? 'input' : 'change', function () { state.page = 0; applyFilters(); });
 });
 $('prev').addEventListener('click', function () { if (state.page > 0) { state.page--; renderProducts(); } });
@@ -518,7 +540,7 @@ function normalize(s) { return String(s || '').toLowerCase().normalize('NFD').re
 function applyFilters() {
   var rows = (state.snapshot && state.snapshot.rows) || [];
   var q = normalize($('q').value.trim());
-  var fc = $('f-cel').value, fk = $('f-client').value, fo = $('f-ov').value;
+  var fc = $('f-cel').value, fk = $('f-client').value, fo = $('f-ov').value, fi = $('f-img').value;
   state.filtered = rows.filter(function (r) {
     if (q && normalize(r[COL.sku]).indexOf(q) < 0 && normalize(r[COL.name]).indexOf(q) < 0) return false;
     if (fc === 'orderable' && r[COL.cel] <= 0) return false;
@@ -526,6 +548,9 @@ function applyFilters() {
     if (fc && fc !== 'orderable' && fc !== 'blocked' && r[COL.celReason] !== fc) return false;
     if (fk !== '' && String(r[COL.client]) !== fk) return false;
     if (fo === '1' && !state.overrides[r[COL.sku]]) return false;
+    if (fi === 'gallery' && !(r[COL.gallery] > 0)) return false;
+    if (fi === 'nogallery' && r[COL.gallery] > 0) return false;
+    if (fi === 'broken' && !(state.brokenImages[r[COL.sku]] || !r[COL.image])) return false;
     return true;
   });
   renderProducts();
@@ -542,6 +567,48 @@ function overrideCell(sku) {
   parts.push(el('button', { class: 'link small', type: 'button', text: o ? 'Editează' : 'Excepție', onclick: function () { openEdit(sku); } }));
   return el('td', null, [el('div', { class: 'row', style: 'gap:6px' }, parts)]);
 }
+
+function imageUrl(r) {
+  var path = r[COL.image];
+  if (!path) return '';
+  return /^https?:/i.test(path) ? path : ((state.snapshot && state.snapshot.imageBase) || '') + path;
+}
+function bigImage(url) { return url.replace(/_LIST(\.[a-z0-9]+)$/i, '_big$1'); }
+function missingBox(text) { return el('div', { class: 'thumb-missing', title: 'Poza principală nu se încarcă', text: text }); }
+function galleryBadge(n) {
+  if (n === undefined || n === null) return null;
+  return n > 0 ? badge(['galerie: ' + n, 'b-ok']) : badge(['fără galerie', 'b-warn']);
+}
+function thumbCell(r) {
+  var url = imageUrl(r);
+  var td = el('td', { class: 'thumb-cell', 'data-label': 'Poză' });
+  var wrap = el('div');
+  if (!url) {
+    wrap.appendChild(missingBox('fără poză'));
+  } else if (state.brokenImages[r[COL.sku]]) {
+    wrap.appendChild(missingBox('poză lipsă'));
+  } else {
+    var img = el('img', { class: 'thumb', loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', src: url });
+    var tries = 0;
+    img.addEventListener('error', function () {
+      // Site-ul poate refuza cererile prea dese: reîncercăm de două ori înainte să marcăm poza ca lipsă.
+      var delays = [3000, 8000];
+      if (tries < delays.length) {
+        var n = ++tries;
+        setTimeout(function () { img.src = url + (url.indexOf('?') < 0 ? '?r=' : '&r=') + n; }, delays[n - 1]);
+        return;
+      }
+      state.brokenImages[r[COL.sku]] = true;
+      var a = img.parentNode; if (a && a.parentNode) a.parentNode.replaceChild(missingBox('poză lipsă'), a);
+    });
+    wrap.appendChild(el('a', { href: bigImage(url), target: '_blank', rel: 'noopener noreferrer', title: 'Deschide poza mare' }, [img]));
+  }
+  var gb = galleryBadge(r[COL.gallery]);
+  if (gb) wrap.appendChild(el('div', null, [gb]));
+  td.appendChild(wrap);
+  return td;
+}
+function fmtTax(v) { return v === null || v === undefined ? '-' : fmtPrice(v); }
 
 function isPending(o) {
   var gen = state.snapshot && state.snapshot.generatedAt;
@@ -564,17 +631,19 @@ function renderProducts() {
     var cliReason = CLIENT_REASONS[r[COL.clientReason]] || [r[COL.clientReason], 'b-muted'];
     var oc = overrideCell(r[COL.sku]); oc.setAttribute('data-label', 'Excepție');
     body.appendChild(el('tr', null, [
+      thumbCell(r),
       el('td', { class: 'code', 'data-label': 'Cod', text: r[COL.sku] }),
       el('td', { 'data-label': 'Nume', text: r[COL.name] }),
       el('td', { class: 'num', 'data-label': 'Stoc', text: fmtNum(r[COL.stock]) }),
       el('td', { class: 'num hide-sm', 'data-label': 'Preț', text: fmtPrice(r[COL.price]) }),
+      el('td', { class: 'num hide-sm', 'data-label': 'Taxa verde', text: fmtTax(r[COL.greenTax]) }),
       el('td', { 'data-label': 'CEL' }, [el('div', null, [el('div', { class: 'small', style: 'margin-bottom:3px', text: 'stoc ' + fmtNum(r[COL.cel]) }), badge(celReason)])]),
       el('td', { 'data-label': 'Clienți' }, [badge(cliReason)]),
       oc
     ]));
   });
-  if (!state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '7', class: 'muted', text: state.productsMsg || 'Se încarcă lista de produse…' })]));
-  if (total === 0 && state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '7', class: 'muted', text: 'Niciun produs nu corespunde filtrelor.' })]));
+  if (!state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '9', class: 'muted', text: state.productsMsg || 'Se încarcă lista de produse…' })]));
+  if (total === 0 && state.snapshot) body.appendChild(el('tr', null, [el('td', { colspan: '9', class: 'muted', text: 'Niciun produs nu corespunde filtrelor.' })]));
   var pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   $('page-info').textContent = 'Pagina ' + (state.page + 1) + ' din ' + pages;
   $('prev').disabled = state.page === 0;

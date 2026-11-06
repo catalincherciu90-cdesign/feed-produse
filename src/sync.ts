@@ -51,13 +51,22 @@ export interface HistoryEntry {
   error?: string;
 }
 
-/** Rând în lista de produse din panou: [cod, nume, stoc, preț, stoc CEL, motiv CEL, disponibil clienți, motiv clienți] */
-export type SnapshotRow = [string, string, number | null, number | null, number, Reason, 0 | 1, Reason];
+/**
+ * Rând în lista de produse din panou:
+ * [cod, nume, stoc, preț, stoc CEL, motiv CEL, disponibil clienți, motiv clienți,
+ *  imagine (relativ la imageBase), taxa verde, nr. poze în galerie]
+ */
+export type SnapshotRow = [
+  string, string, number | null, number | null, number, Reason, 0 | 1, Reason,
+  string, number | null, number,
+];
 
 export interface Snapshot {
   generatedAt: string;
   settings: Settings;
   priceField: boolean;
+  /** Prefixul comun al linkurilor de imagine (scurtează lista). */
+  imageBase: string;
   rows: SnapshotRow[];
 }
 
@@ -131,16 +140,35 @@ export function buildSnapshot(
   overrides: Overrides,
   generatedAt: string,
 ): Snapshot {
+  const imageBase = commonPrefix(products.map((p) => p.image).filter((u): u is string => !!u));
   return {
     generatedAt,
     settings,
     priceField: rules.requirePrice || products.some((p) => p.price !== null),
+    imageBase,
     rows: products.map((p) => {
       const c = celDecision(p, rules);
       const k = clientDecision(p, settings.availableMinStock, overrides);
-      return [p.sku, p.name, p.stock, p.price, c.stock, c.reason, k.available ? 1 : 0, k.reason];
+      const img = p.image ? (p.image.startsWith(imageBase) ? p.image.slice(imageBase.length) : p.image) : '';
+      return [
+        p.sku, p.name, p.stock, p.price, c.stock, c.reason, k.available ? 1 : 0, k.reason,
+        img, p.greenTax ?? null, p.galleryCount ?? 0,
+      ];
     }),
   };
+}
+
+/** Prefixul comun până la ultimul „/” (ex. https://site.ro/userfiles/.../products/). */
+export function commonPrefix(urls: string[]): string {
+  if (!urls.length) return '';
+  let pre = urls[0];
+  for (const u of urls) {
+    let i = 0;
+    while (i < pre.length && i < u.length && pre[i] === u[i]) i++;
+    pre = pre.slice(0, i);
+    if (!pre) return '';
+  }
+  return pre.slice(0, pre.lastIndexOf('/') + 1);
 }
 
 async function loadAdmin(kv: KVStore, config: Config, warnings: string[]) {

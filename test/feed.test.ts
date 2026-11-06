@@ -3,8 +3,8 @@ import { CelClient } from '../src/cel';
 import { bigImageUrl, buildCelFeed, celStock, celStockFor } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
-import { parseFeed, parseNumber } from '../src/source';
-import { KV_KEYS, planCelUpdates, runSync } from '../src/sync';
+import { countGallery, parseFeed, parseNumber } from '../src/source';
+import { buildSnapshot, commonPrefix, KV_KEYS, planCelUpdates, runSync } from '../src/sync';
 
 class MemKV {
   store = new Map<string, string>();
@@ -314,5 +314,34 @@ describe('feed CEL: imagine mare și câmpuri noi din sursă', () => {
     expect(bigImageUrl('https://a/b/1_LIST.jpg')).toBe('https://a/b/1_big.jpg');
     expect(bigImageUrl('https://a/b/1_LIST.PNG')).toBe('https://a/b/1_big.PNG');
     expect(bigImageUrl('https://a/LIST/1.jpg')).toBe('https://a/LIST/1.jpg');
+  });
+});
+
+describe('poze, galerie și taxa verde în lista din panou', () => {
+  it('citește imaginea, numărul de poze din galerie și taxa verde', () => {
+    const xml = `<products>
+<product><Product_Code>Product Code</Product_Code><Size_200_x_200>Size 200 x 200</Size_200_x_200><Gallery_Images>Gallery Images</Gallery_Images><Stock>Stock</Stock><GreenTax>GreenTax</GreenTax></product>
+<product><Product_Code>A</Product_Code><Size_200_x_200>https://s.ro/u/products/1_LIST.jpg</Size_200_x_200><Gallery_Images>https://s.ro/g/a.jpg#https://s.ro/g/b.jpg</Gallery_Images><Stock>5</Stock><GreenTax>4.24</GreenTax></product>
+<product><Product_Code>B</Product_Code><Size_200_x_200>https://s.ro/u/products/2_LIST.jpg</Size_200_x_200><Gallery_Images></Gallery_Images><Stock>5</Stock><GreenTax>0.00</GreenTax></product>
+</products>`;
+    const r = parseFeed(xml, loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product' } as unknown as Env));
+    expect(r.fieldsUsed).toMatchObject({ image: 'Size_200_x_200', gallery: 'Gallery_Images', greenTax: 'GreenTax' });
+    expect(r.products[0]).toMatchObject({ sku: 'A', image: 'https://s.ro/u/products/1_LIST.jpg', galleryCount: 2, greenTax: 4.24 });
+    expect(r.products[1]).toMatchObject({ sku: 'B', galleryCount: 0, greenTax: 0 });
+
+    const snap = buildSnapshot(r.products, { availableMinStock: 10, celMinStock: 10, celStockBuffer: 0, celMaxStock: 0, celBlockZeroPrice: false },
+      { minStock: 10, buffer: 0, requirePrice: false }, {}, 'now');
+    expect(snap.imageBase).toBe('https://s.ro/u/products/');
+    expect(snap.rows[0].slice(8)).toEqual(['1_LIST.jpg', 4.24, 2]);
+    expect(snap.rows[1].slice(8)).toEqual(['2_LIST.jpg', 0, 0]);
+  });
+
+  it('countGallery și commonPrefix', () => {
+    expect(countGallery('')).toBe(0);
+    expect(countGallery('https://a/1.jpg')).toBe(1);
+    expect(countGallery('https://a/1.jpg#https://a/2.jpg#')).toBe(2);
+    expect(commonPrefix(['https://s/p/1.jpg', 'https://s/p/22.jpg'])).toBe('https://s/p/');
+    expect(commonPrefix(['https://a/1.jpg', 'http://b/2.jpg'])).toBe('');
+    expect(commonPrefix([])).toBe('');
   });
 });

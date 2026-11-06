@@ -6,12 +6,18 @@ export interface Product {
   name: string;
   stock: number | null; // null = stoc lipsă sau ilizibil
   price: number | null;
+  image?: string; // linkul imaginii principale (miniatura din feed)
+  galleryCount?: number; // câte poze are în galerie (linkuri separate prin #)
+  greenTax?: number | null; // taxa verde (cu TVA)
   extra: Record<string, string>;
 }
 
 const SKU_CANDIDATES = ['sku', 'cod', 'cod_produs', 'code', 'product_code', 'model', 'products_model', 'id', 'g:id'];
 const STOCK_CANDIDATES = ['stoc', 'stock', 'cantitate', 'quantity', 'qty', 'stock_quantity', 'inventory'];
 const NAME_CANDIDATES = ['nume', 'name', 'denumire', 'title', 'titlu', 'g:title', 'product_name'];
+const IMAGE_CANDIDATES = ['size_200_x_200', 'image', 'imagine', 'poza', 'g:image_link', 'image_link', 'picture'];
+const GALLERY_CANDIDATES = ['gallery_images', 'gallery', 'galerie', 'images'];
+const GREEN_TAX_CANDIDATES = ['greentax', 'green_tax', 'taxa_verde', 'taxaverde', 'eco_tax', 'ecotax'];
 const PRICE_CANDIDATES = ['pret', 'price', 'pret_vanzare', 'g:price', 'pretf'];
 
 type Obj = Record<string, unknown>;
@@ -83,7 +89,7 @@ export interface ParseResult {
   rawItems: Record<string, unknown>[];
   /** Numele tag-urilor: element produs și rădăcină, pentru a păstra structura. */
   tags: { root: string; item: string };
-  fieldsUsed: { sku: string; stock: string; name?: string; price?: string };
+  fieldsUsed: { sku: string; stock: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string };
   skippedNoSku: number;
   skippedHeader: number;
 }
@@ -112,6 +118,9 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const stockField = pickField(items, config.fields.stock, STOCK_CANDIDATES);
   const nameField = pickField(items, config.fields.name, NAME_CANDIDATES);
   const priceField = pickField(items, config.fields.price, PRICE_CANDIDATES);
+  const imageField = pickField(items, config.fields.image, IMAGE_CANDIDATES);
+  const galleryField = pickField(items, config.fields.gallery, GALLERY_CANDIDATES);
+  const greenTaxField = pickField(items, config.fields.greenTax, GREEN_TAX_CANDIDATES);
   const sample = Object.keys(items[0]).join(', ');
   if (!skuField) throw new Error(`Nu am identificat câmpul de cod produs. Setează FIELD_SKU. Câmpuri găsite: ${sample}`);
   if (!stockField) throw new Error(`Nu am identificat câmpul de stoc. Setează FIELD_STOCK. Câmpuri găsite: ${sample}`);
@@ -145,6 +154,9 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       name: (nameField && text(item[nameField])) || '',
       stock: stock === null ? null : Math.max(0, Math.floor(stock)),
       price: priceField ? parseNumber(text(item[priceField])) : null,
+      image: (imageField && text(item[imageField])) || undefined,
+      galleryCount: galleryField ? countGallery(text(item[galleryField])) : undefined,
+      greenTax: greenTaxField ? parseNumber(text(item[greenTaxField])) : undefined,
       extra,
     });
   }
@@ -153,7 +165,15 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
     products,
     rawItems,
     tags: detectTags(doc, config.itemPath, items),
-    fieldsUsed: { sku: skuField, stock: stockField, name: nameField, price: priceField },
+    fieldsUsed: {
+      sku: skuField,
+      stock: stockField,
+      name: nameField,
+      price: priceField,
+      image: imageField,
+      gallery: galleryField,
+      greenTax: greenTaxField,
+    },
     skippedNoSku,
     skippedHeader,
   };
@@ -183,6 +203,12 @@ function detectTags(doc: unknown, itemPath: string | undefined, items: Obj[]): {
   };
   walk(doc, 'products');
   return found;
+}
+
+/** Galeria Teamshare: linkuri separate prin „#”. */
+export function countGallery(raw: string | undefined): number {
+  if (!raw) return 0;
+  return raw.split('#').filter((u) => /^https?:\/\//i.test(u.trim())).length;
 }
 
 /** "Product Code" în tag-ul <Product_Code> => rând de titluri, nu produs. */
