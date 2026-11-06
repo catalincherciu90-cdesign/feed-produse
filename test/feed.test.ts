@@ -357,6 +357,28 @@ describe('feed CEL: preț cu taxa verde inclusă', () => {
     expect(priceWithGreenTax(null, 1)).toBe(0);
   });
 
+  it('PRET_LISTA conține prețul cu taxa verde, fără câmp nou și fără GreenTax', () => {
+    const XML = `<products>
+<product><Product_Code>A</Product_Code><Stock>50</Stock><PRET_LISTA>72.6</PRET_LISTA><GreenTax>4.24</GreenTax></product>
+<product><Product_Code>B</Product_Code><Stock>50</Stock><PRET_LISTA>0</PRET_LISTA><GreenTax>0.07</GreenTax></product>
+<product><Product_Code>C</Product_Code><Stock>50</Stock><PRET_LISTA>12.1</PRET_LISTA><GreenTax>0.00</GreenTax></product>
+</products>`;
+    const cfg = loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_PRICE: 'PRET_LISTA', FIELD_GREEN_TAX: 'GreenTax' } as unknown as Env);
+    const r = parseFeed(XML, cfg);
+    const xml = buildCelFeed(r.rawItems, r.products, {
+      stockField: 'Stock', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0, requirePrice: true,
+      priceWithTax: { after: 'PRET_LISTA', to: 'PRET_LISTA' },
+      dropFields: ['GreenTax'],
+    });
+    expect(xml).toContain('<PRET_LISTA><![CDATA[76.84]]></PRET_LISTA>');
+    expect(xml).toContain('<PRET_LISTA><![CDATA[0]]></PRET_LISTA>'); // preț 0 rămâne neschimbat
+    expect(xml).toContain('<PRET_LISTA><![CDATA[12.10]]></PRET_LISTA>');
+    expect(xml.match(/<PRET_LISTA>/g)).toHaveLength(3);
+    expect(xml).not.toMatch(/GreenTax|PRET_FINAL|taxa|verde/i);
+    // prețul din panou și regula prețului 0 folosesc în continuare prețul din sursă
+    expect(r.products.map((p) => p.price)).toEqual([72.6, 0, 12.1]);
+  });
+
   it('pune PRET_FINAL după PRET_LISTA, nu modifică prețul vechi și scoate GreenTax', () => {
     const XML = `<products>
 <product><Product_Code>A</Product_Code><Stock>50</Stock><PRET_LISTA>72.6</PRET_LISTA><GreenTax>4.24</GreenTax></product>

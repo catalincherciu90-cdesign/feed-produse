@@ -83,7 +83,7 @@ jobs:
           # Feed CEL: adaugă Image_Big (imaginea mare, 879x879) lângă miniatura de 200x200
           CEL_BIG_IMAGE_FROM: Size_200_x_200
           CEL_BIG_IMAGE_FIELD: Image_Big
-          # Feed CEL: adaugă PRET_FINAL = PRET_LISTA + GreenTax (prețul cu taxa verde inclusă), după PRET_LISTA
-          CEL_PRICE_WITH_TAX_FIELD: PRET_FINAL
+          # Feed CEL: PRET_LISTA conține prețul cu taxa verde inclusă (PRET_LISTA + GreenTax din sursă)
+          CEL_PRICE_WITH_TAX_FIELD: PRET_LISTA
           # Feed CEL: taxa verde nu apare separat (e deja inclusă în PRET_FINAL)
           CEL_FEED_DROP_FIELDS: GreenTax

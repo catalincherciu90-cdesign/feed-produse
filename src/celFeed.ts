@@ -53,10 +53,13 @@ export interface BigImageRule {
   to: string; // câmpul nou, ex. Image_Big
 }
 
-/** Câmp nou cu prețul final: preț + taxa verde (ambele cu TVA). */
+/**
+ * Prețul final: preț + taxa verde (ambele cu TVA).
+ * Dacă `to` e chiar câmpul de preț din sursă, valoarea lui e înlocuită (fără câmp nou).
+ */
 export interface PriceWithTaxRule {
-  after: string; // câmpul de preț din sursă, ex. PRET_LISTA (câmpul nou se pune după el)
-  to: string; // ex. PRET_CU_TAXA_VERDE
+  after: string; // câmpul de preț din sursă, ex. PRET_LISTA
+  to: string; // ex. PRET_LISTA (înlocuiește prețul) sau un nume nou (câmp adăugat după preț)
 }
 
 /** Preț + taxa verde, rotunjit la bani. Fără preț valid => 0 (produsul e oricum blocat pe CEL). */
@@ -113,7 +116,12 @@ export function buildCelFeed(
     }
     if (opts.priceWithTax) {
       const total = priceWithGreenTax(products[i].price, products[i].greenTax);
-      copy = withField(copy, opts.priceWithTax.after, opts.priceWithTax.to, total.toFixed(2));
+      if (opts.priceWithTax.to === opts.priceWithTax.after) {
+        // Înlocuiește prețul din sursă; la preț 0 sau invalid lasă valoarea originală.
+        if (total > 0) copy[opts.priceWithTax.to] = total.toFixed(2);
+      } else {
+        copy = withField(copy, opts.priceWithTax.after, opts.priceWithTax.to, total.toFixed(2));
+      }
     }
     for (const f of opts.dropFields ?? []) delete copy[f];
     lines.push(renderNode(opts.itemTag, copy, ''));

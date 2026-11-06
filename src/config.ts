@@ -37,7 +37,7 @@ export interface Env {
   CEL_BIG_IMAGE_FROM?: string; // ex. Size_200_x_200
   CEL_BIG_IMAGE_FIELD?: string; // ex. Image_Big
   // Feed CEL: câmp nou cu prețul + taxa verde (necesită FIELD_PRICE și FIELD_GREEN_TAX)
-  CEL_PRICE_WITH_TAX_FIELD?: string; // ex. PRET_FINAL
+  CEL_PRICE_WITH_TAX_FIELD?: string; // ex. PRET_LISTA = înlocuiește prețul; alt nume = câmp nou
   // Feed CEL: câmpuri din sursă care nu apar în feed, separate prin virgulă (ex. GreenTax)
   CEL_FEED_DROP_FIELDS?: string;
 }

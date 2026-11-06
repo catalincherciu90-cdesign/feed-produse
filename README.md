@@ -60,9 +60,9 @@ Are **exact aceeași structură și aceleași câmpuri** ca feed-ul tău de pe s
 
 - `Image_Big`: imaginea principală mare (879x879), pusă imediat după `Size_200_x_200`, care e doar o miniatură de 200x200. Linkul se obține din miniatură, schimbând `_LIST.jpg` în `_big.jpg`, după regula Teamshare, verificată pe un eșantion de 40 de produse. În CEL, mapează imaginea principală pe `Image_Big`.
 
-- `PRET_FINAL`: prețul plătit de client, cu taxa verde inclusă (`PRET_LISTA` + `GreenTax` din sursă), cu TVA, rotunjit la bani, pus imediat după `PRET_LISTA`. Exemplu BR-BD60-00601: 72,60 + 4,24 = 76,84. Produsele cu preț 0 au și aici 0.00 și rămân blocate pe CEL. În CEL, mapează prețul pe `PRET_FINAL`. `PRET_LISTA` rămâne neschimbat.
+**Prețul:** în feed-ul CEL, `PRET_LISTA` conține prețul plătit de client, **cu taxa verde inclusă** (`PRET_LISTA` + `GreenTax` din feed-ul Teamshare), cu TVA, rotunjit la bani. Exemplu BR-BD60-00601: 72,60 + 4,24 = 76,84. Produsele cu preț 0 rămân 0 și sunt blocate pe CEL. Setarea e `CEL_PRICE_WITH_TAX_FIELD: PRET_LISTA`.
 
-**Taxa verde nu apare separat în feed-ul CEL:** câmpul `GreenTax` e scos (`CEL_FEED_DROP_FIELDS`), pentru că e deja inclusă în `PRET_FINAL`. Ea se citește în continuare din feed-ul Teamshare, pentru calcul și pentru panou.
+**Taxa verde nu apare separat în feed-ul CEL:** câmpul `GreenTax` e scos (`CEL_FEED_DROP_FIELDS`), pentru că e deja inclusă în `PRET_LISTA`. Ea se citește în continuare din feed-ul Teamshare, pentru calcul și pentru panou.
 
 Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 21%) și e copiat neschimbat. **Produsele cu preț 0 sau fără preț primesc stoc 0 pe CEL** (`CEL_BLOCK_ZERO_PRICE`), ca să nu poată fi comandate la 0 lei.
 
