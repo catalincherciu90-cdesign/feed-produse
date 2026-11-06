@@ -64,6 +64,15 @@ export default {
       });
     }
 
+    if (url.pathname === '/facebook.xml' && req.method === 'GET') {
+      // Catalog Meta: conține doar date publice de pe site (fără stocul real).
+      const body = await env.FEED_KV.get(KV_KEYS.facebookFeed, 'stream');
+      if (!body) return new Response('Catalogul Facebook nu a fost generat încă', { status: 503 });
+      return new Response(body, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+      });
+    }
+
     if (url.pathname === '/status' && req.method === 'GET') {
       if (!env.ADMIN_TOKEN || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
         return new Response('Acces neautorizat', { status: 401 });

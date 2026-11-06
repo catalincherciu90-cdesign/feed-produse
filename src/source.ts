@@ -10,6 +10,13 @@ export interface Product {
   galleryCount?: number; // câte poze are în galerie (linkuri separate prin #)
   greenTax?: number | null; // taxa verde (cu TVA)
   ean?: string; // cod de bare, așa cum vine din feed
+  // Pentru catalogul Facebook
+  url?: string;
+  brand?: string;
+  description?: string; // descrierea lungă (poate conține HTML)
+  intro?: string; // descrierea scurtă
+  category?: string;
+  gallery?: string[]; // linkurile pozelor din galerie
   extra: Record<string, string>;
 }
 
@@ -20,6 +27,11 @@ const IMAGE_CANDIDATES = ['size_200_x_200', 'image', 'imagine', 'poza', 'g:image
 const GALLERY_CANDIDATES = ['gallery_images', 'gallery', 'galerie', 'images'];
 const GREEN_TAX_CANDIDATES = ['greentax', 'green_tax', 'taxa_verde', 'taxaverde', 'eco_tax', 'ecotax'];
 const EAN_CANDIDATES = ['ean', 'ean13', 'gtin', 'g:gtin', 'barcode', 'cod_bare', 'codbare'];
+const URL_CANDIDATES = ['url', 'link', 'product_url', 'g:link'];
+const BRAND_CANDIDATES = ['brandname', 'brand', 'producator', 'marca', 'g:brand'];
+const DESCRIPTION_CANDIDATES = ['description', 'descriere', 'g:description'];
+const INTRO_CANDIDATES = ['intro', 'short_description', 'descriere_scurta'];
+const CATEGORY_CANDIDATES = ['category', 'categorie', 'product_type', 'g:product_type'];
 const PRICE_CANDIDATES = ['pret', 'price', 'pret_vanzare', 'g:price', 'pretf'];
 
 type Obj = Record<string, unknown>;
@@ -132,6 +144,11 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const galleryField = pickField(items, config.fields.gallery, GALLERY_CANDIDATES);
   const greenTaxField = pickField(items, config.fields.greenTax, GREEN_TAX_CANDIDATES);
   const eanField = pickField(items, config.fields.ean, EAN_CANDIDATES);
+  const urlField = pickField(items, undefined, URL_CANDIDATES);
+  const brandField = pickField(items, undefined, BRAND_CANDIDATES);
+  const descField = pickField(items, undefined, DESCRIPTION_CANDIDATES);
+  const introField = pickField(items, undefined, INTRO_CANDIDATES);
+  const categoryField = pickField(items, undefined, CATEGORY_CANDIDATES);
   const sample = Object.keys(items[0]).join(', ');
   if (!skuField) throw new Error(`Nu am identificat câmpul de cod produs. Setează FIELD_SKU. Câmpuri găsite: ${sample}`);
   if (!stockField) throw new Error(`Nu am identificat câmpul de stoc. Setează FIELD_STOCK. Câmpuri găsite: ${sample}`);
@@ -169,6 +186,12 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       galleryCount: galleryField ? countGallery(text(item[galleryField])) : undefined,
       greenTax: greenTaxField ? parseNumber(text(item[greenTaxField])) : undefined,
       ean: eanField ? text(item[eanField]) ?? '' : undefined,
+      url: (urlField && text(item[urlField])) || undefined,
+      brand: (brandField && text(item[brandField])) || undefined,
+      description: (descField && text(item[descField])) || undefined,
+      intro: (introField && text(item[introField])) || undefined,
+      category: (categoryField && text(item[categoryField])) || undefined,
+      gallery: galleryField ? galleryUrls(text(item[galleryField])) : undefined,
       extra,
     });
   }
@@ -219,9 +242,13 @@ function detectTags(doc: unknown, itemPath: string | undefined, items: Obj[]): {
 }
 
 /** Galeria Teamshare: linkuri separate prin „#”. */
+export function galleryUrls(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw.split('#').map((u) => u.trim()).filter((u) => /^https?:\/\//i.test(u));
+}
+
 export function countGallery(raw: string | undefined): number {
-  if (!raw) return 0;
-  return raw.split('#').filter((u) => /^https?:\/\//i.test(u.trim())).length;
+  return galleryUrls(raw).length;
 }
 
 /** "Product Code" în tag-ul <Product_Code> => rând de titluri, nu produs. */

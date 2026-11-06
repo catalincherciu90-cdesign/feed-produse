@@ -510,6 +510,7 @@ function renderStatus() {
     el('h3', { text: 'Linkuri feed' }),
     feedLink('CEL', '/cel.xml'),
     feedLink('Clienți', '/feed.xml'),
+    feedLink('Facebook', '/facebook.xml'),
     el('p', { class: 'help', text: 'Dacă ai setat CEL_FEED_TOKEN sau CLIENT_FEED_TOKEN, adaugă la link ?token=... .' }),
     el('h3', { style: 'margin-top:14px', text: 'Reguli în vigoare' }),
     el('p', { class: 'small', style: 'margin:0' }, [

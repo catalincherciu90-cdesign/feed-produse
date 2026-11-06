@@ -66,6 +66,18 @@ Are **exact aceeași structură și aceleași câmpuri** ca feed-ul tău de pe s
 
 Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 21%) și e copiat neschimbat. **Produsele cu preț 0 sau fără preț primesc stoc 0 pe CEL** (`CEL_BLOCK_ZERO_PRICE`), ca să nu poată fi comandate la 0 lei.
 
+## Catalogul pentru Facebook / Instagram
+
+URL: `https://feed-produse.catalincherciu90.workers.dev/facebook.xml`. Se conectează în **Meta Commerce Manager > Catalog > Surse de date > Adaugă articole > Feed de date > Programat**, cu actualizare zilnică sau orară.
+
+Format RSS cu câmpuri `g:` (formatul Google Merchant, acceptat de Meta). Pentru fiecare produs: `id` (codul), `title`, `description` (text curat din descriere; dacă lipsește, din intro sau din nume), `link`, `image_link` (poza mare `_big.jpg`), până la 10 `additional_image_link` din galerie, `availability`, `condition` (new), `price`, `brand`, `gtin` (doar EAN valid și unic) și `product_type` (categoria).
+
+- **Prețul** e cel de pe site (`PRET_LISTA` din Teamshare, cu TVA, **fără** taxa verde), pentru că Meta cere ca prețul din catalog să fie același cu cel de pe pagina produsului. Taxa verde se adaugă în coș, pe site.
+- **Disponibilitatea** urmează regula pentru clienți: de la 10 bucăți `in stock`, sub 10 `out of stock`, plus excepțiile din panou.
+- **Nu intră în catalog** produsele fără preț, fără link sau fără poză, pe care Meta le-ar respinge.
+
+Setări în workflow: `FB_FEED_ENABLED`, `FB_SHOP_NAME`, `FB_SHOP_URL`, `FB_CURRENCY`.
+
 ## Feed-ul pentru clienți
 
 URL: `https://feed-produse.<contul-tau>.workers.dev/feed.xml`
@@ -153,6 +165,7 @@ Panoul rulează pe planul gratuit Cloudflare. Lista de produse e generată de si
 |---|---|---|
 | `/feed.xml` | public (sau `CLIENT_FEED_TOKEN`) | feed-ul pentru clienți |
 | `/cel.xml` | public (sau `CEL_FEED_TOKEN`) | feed-ul pentru CEL |
+| `/facebook.xml` | public | catalogul Meta (Facebook / Instagram) |
 | `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări (JSON) |
 | `/admin` | `ADMIN_TOKEN` | panoul de admin |
 

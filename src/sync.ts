@@ -1,6 +1,8 @@
 import { CelClient, type CelStockUpdate } from './cel';
 import { buildCelFeed } from './celFeed';
 import { buildClientFeed } from './clientFeed';
+import { buildFacebookFeed } from './facebookFeed';
+import { bigImageUrl } from './celFeed';
 import type { Config } from './config';
 import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockRules, type Reason } from './decisions';
 import { isValidGtin } from './ean';
@@ -30,6 +32,7 @@ export interface SyncStatus {
     fieldsUsed: Record<string, string | undefined>;
   };
   celFeed?: { products: number; orderable: number; blockedNoPrice: number; bytes: number };
+  facebookFeed?: { included: number; inStock: number; skipped: { noPrice: number; noLink: number; noImage: number }; bytes: number };
   cel?: {
     skipped?: string;
     mode?: 'diff' | 'full';
@@ -274,6 +277,20 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         blockedNoPrice: rules.requirePrice ? products.filter((p) => !hasValidPrice(p)).length : 0,
         bytes: celXml.length,
       };
+    }
+
+    // 2b2. Catalog Facebook
+    if (config.facebook.enabled) {
+      const fb = buildFacebookFeed(products, {
+        minStock: config.availableMinStock,
+        overrides,
+        currency: config.facebook.currency,
+        shopName: config.facebook.shopName,
+        shopUrl: config.facebook.shopUrl,
+        bigImage: config.celBigImage ? bigImageUrl : undefined,
+      });
+      await kv.put(KV_KEYS.facebookFeed, fb.xml);
+      status.facebookFeed = { included: fb.included, inStock: fb.inStock, skipped: fb.skipped, bytes: fb.xml.length };
     }
 
     // 2c. Lista de produse pentru panou

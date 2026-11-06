@@ -88,3 +88,9 @@ jobs:
           CEL_PRICE_WITH_TAX_FIELD: PRET_LISTA
           # Feed CEL: taxa verde nu apare separat (e deja inclusă în PRET_LISTA)
           CEL_FEED_DROP_FIELDS: GreenTax
+
+          # Catalog Facebook / Instagram (Meta Commerce Manager): /facebook.xml
+          FB_FEED_ENABLED: "true"
+          FB_SHOP_NAME: SpotVision Electric
+          FB_SHOP_URL: https://www.spotvisionelectric.ro
+          FB_CURRENCY: RON
