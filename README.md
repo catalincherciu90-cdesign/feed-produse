@@ -56,6 +56,12 @@ Are **exact aceeași structură și aceleași câmpuri** ca feed-ul tău de pe s
 
 În adminul CEL înlocuiești linkul feed-ului cu cel de mai sus. Cât de des îl citește CEL depinde de setările lor (butonul cu ceasul de la feed).
 
+**Câmpuri adăugate față de sursă:**
+
+- `Image_Big`: imaginea principală mare (879x879), pusă imediat după `Size_200_x_200`, care e doar o miniatură de 200x200. Linkul se obține din miniatură, schimbând `_LIST.jpg` în `_big.jpg`, după regula Teamshare, verificată pe un eșantion de 40 de produse. În CEL, mapează imaginea principală pe `Image_Big`.
+
+**Taxa verde** vine din câmpul `GreenTax` al feed-ului Teamshare și e copiată neschimbată. Valoarea e **cu TVA** și **nu e inclusă** în `PRET_LISTA`: site-ul o adaugă peste preț în coș (exemplu BR-BD60-00601: preț 72,60 lei + taxa verde 4,24 lei).
+
 Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 21%) și e copiat neschimbat. **Produsele cu preț 0 sau fără preț primesc stoc 0 pe CEL** (`CEL_BLOCK_ZERO_PRICE`), ca să nu poată fi comandate la 0 lei.
 
 ## Feed-ul pentru clienți

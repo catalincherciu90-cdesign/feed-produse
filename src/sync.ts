@@ -219,6 +219,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         stockField: parsed.fieldsUsed.stock,
         rootTag: parsed.tags.root,
         itemTag: parsed.tags.item,
+        bigImage: config.celBigImage,
         ...rules,
       });
       await kv.put(KV_KEYS.celFeed, celXml);

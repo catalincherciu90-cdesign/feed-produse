@@ -29,6 +29,10 @@ export interface Env {
 
   // Feed clienți
   CLIENT_FEED_EXTRA_FIELDS?: string; // ex. "ean,brand": câmpuri din sursă copiate în feed
+
+  // Feed CEL: imagine mare derivată din miniatură (…_LIST.jpg => …_big.jpg)
+  CEL_BIG_IMAGE_FROM?: string; // ex. Size_200_x_200
+  CEL_BIG_IMAGE_FIELD?: string; // ex. Image_Big
 }
 
 export interface Config {
@@ -51,6 +55,7 @@ export interface Config {
   celApiUrl: string;
   celDemo: boolean;
   clientFeedExtraFields: string[];
+  celBigImage?: { from: string; to: string };
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -102,5 +107,9 @@ export function loadConfig(env: Env): Config {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    celBigImage:
+      opt(env.CEL_BIG_IMAGE_FROM) && opt(env.CEL_BIG_IMAGE_FIELD)
+        ? { from: opt(env.CEL_BIG_IMAGE_FROM)!, to: opt(env.CEL_BIG_IMAGE_FIELD)! }
+        : undefined,
   };
 }

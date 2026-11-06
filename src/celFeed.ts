@@ -6,6 +6,7 @@
  * - câmpul de stoc e număr întreg; sub prag (implicit 10) devine 0, deci nu poate fi comandat
  * - produsele cu preț 0 sau lipsă primesc stoc 0 (CEL_BLOCK_ZERO_PRICE)
  * - excepțiile din panoul de admin (blocat / fără prag) au prioritate
+ * - opțional, un câmp nou cu imaginea mare (CEL_BIG_IMAGE_FROM / CEL_BIG_IMAGE_FIELD)
  */
 import { celStockFor, type CelStockRules } from './decisions';
 import type { Product } from './source';
@@ -41,14 +42,53 @@ function renderNode(tag: string, value: unknown, indent: string): string {
   return `${indent}<${tag}${attrs}>\n${inner}\n${indent}</${tag}>`;
 }
 
+/**
+ * Imaginea mare derivată din miniatură: Teamshare publică imaginea principală ca
+ * „…_LIST.jpg” (200x200) și varianta mare ca „…_big.jpg” (verificat pe un eșantion de produse).
+ */
+export interface BigImageRule {
+  from: string; // câmpul sursă, ex. Size_200_x_200
+  to: string; // câmpul nou, ex. Image_Big
+}
+
+export function bigImageUrl(url: string): string {
+  return url.replace(/_LIST(\.[a-z0-9]+)(\?.*)?$/i, '_big$1$2');
+}
+
+/** Copie a elementului cu câmpul nou inserat imediat după câmpul sursă (ordinea câmpurilor se păstrează). */
+function withField(item: Record<string, unknown>, after: string, key: string, value: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  let placed = false;
+  for (const [k, v] of Object.entries(item)) {
+    if (k === key) continue;
+    out[k] = v;
+    if (k === after) {
+      out[key] = value;
+      placed = true;
+    }
+  }
+  if (!placed) out[key] = value;
+  return out;
+}
+
+function textOf(v: unknown): string {
+  if (typeof v === 'string' || typeof v === 'number') return String(v).trim();
+  if (v && typeof v === 'object' && '#text' in v) return textOf((v as Record<string, unknown>)['#text']);
+  return '';
+}
+
 export function buildCelFeed(
   rawItems: Record<string, unknown>[],
   products: Product[],
-  opts: { stockField: string; rootTag: string; itemTag: string } & CelStockRules,
+  opts: { stockField: string; rootTag: string; itemTag: string; bigImage?: BigImageRule } & CelStockRules,
 ): string {
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', `<${opts.rootTag}>`];
   rawItems.forEach((item, i) => {
-    const copy: Record<string, unknown> = { ...item, [opts.stockField]: String(celStockFor(products[i], opts)) };
+    let copy: Record<string, unknown> = { ...item, [opts.stockField]: String(celStockFor(products[i], opts)) };
+    if (opts.bigImage) {
+      const src = textOf(item[opts.bigImage.from]);
+      copy = withField(copy, opts.bigImage.from, opts.bigImage.to, src ? bigImageUrl(src) : '');
+    }
     lines.push(renderNode(opts.itemTag, copy, ''));
   });
   lines.push(`</${opts.rootTag}>`);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
-import { buildCelFeed, celStock, celStockFor } from '../src/celFeed';
+import { bigImageUrl, buildCelFeed, celStock, celStockFor } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
 import { parseFeed, parseNumber } from '../src/source';
@@ -286,5 +286,33 @@ describe('runSync cu setări și excepții din panou', () => {
     expect(s.error).toMatch(/oprit sincronizarea/);
     expect(JSON.parse(kv.store.get(KV_KEYS.history)!)).toHaveLength(3);
     vi.unstubAllGlobals();
+  });
+});
+
+describe('feed CEL: imagine mare și câmpuri noi din sursă', () => {
+  const XML = `<?xml version="1.0"?><products>
+<product><Product_Code><![CDATA[Product Code]]></Product_Code><Size_200_x_200><![CDATA[Size 200 x 200]]></Size_200_x_200><Stock><![CDATA[Stock]]></Stock><PRET_LISTA><![CDATA[PRET LISTA]]></PRET_LISTA><GreenTax><![CDATA[GreenTax]]></GreenTax></product>
+<product><Product_Code><![CDATA[BR-1]]></Product_Code><Size_200_x_200><![CDATA[https://x.ro/products/428_LIST.jpg]]></Size_200_x_200><Stock><![CDATA[50.0000]]></Stock><PRET_LISTA><![CDATA[72.6]]></PRET_LISTA><GreenTax><![CDATA[4.24]]></GreenTax></product>
+<product><Product_Code><![CDATA[BR-2]]></Product_Code><Size_200_x_200><![CDATA[]]></Size_200_x_200><Stock><![CDATA[3]]></Stock><PRET_LISTA><![CDATA[10]]></PRET_LISTA><GreenTax><![CDATA[0.00]]></GreenTax></product>
+</products>`;
+
+  it('adaugă Image_Big după miniatură și păstrează GreenTax', () => {
+    const cfg = loadConfig({ SOURCE_URL: 'x', SOURCE_ITEM_PATH: 'products.product', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_PRICE: 'PRET_LISTA' } as unknown as Env);
+    const r = parseFeed(XML, cfg);
+    expect(r.skippedHeader).toBe(1);
+    const xml = buildCelFeed(r.rawItems, r.products, {
+      stockField: 'Stock', rootTag: 'products', itemTag: 'product', minStock: 10, buffer: 0, requirePrice: true,
+      bigImage: { from: 'Size_200_x_200', to: 'Image_Big' },
+    });
+    expect(xml).toMatch(/<Size_200_x_200><!\[CDATA\[https:\/\/x\.ro\/products\/428_LIST\.jpg\]\]><\/Size_200_x_200>\n\s*<Image_Big><!\[CDATA\[https:\/\/x\.ro\/products\/428_big\.jpg\]\]><\/Image_Big>/);
+    expect(xml).toContain('<GreenTax><![CDATA[4.24]]></GreenTax>');
+    expect(xml).toContain('<Image_Big><![CDATA[]]></Image_Big>'); // fără miniatură => câmp gol
+    expect(xml.match(/<Image_Big>/g)).toHaveLength(2);
+  });
+
+  it('bigImageUrl schimbă doar terminația _LIST', () => {
+    expect(bigImageUrl('https://a/b/1_LIST.jpg')).toBe('https://a/b/1_big.jpg');
+    expect(bigImageUrl('https://a/b/1_LIST.PNG')).toBe('https://a/b/1_big.PNG');
+    expect(bigImageUrl('https://a/LIST/1.jpg')).toBe('https://a/LIST/1.jpg');
   });
 });
