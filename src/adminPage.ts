@@ -216,13 +216,33 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
           <h3>Feed pentru importul în site (Teamshare)</h3>
           <p id="tech-feed-info" class="small muted">Se încarcă…</p>
           <div class="row">
-            <button class="btn" type="button" id="tech-feed-save">Salvează lista și generează feed-ul</button>
-            <button class="link small" type="button" id="tech-feed-load">Încarcă lista salvată</button>
+            <button class="btn primary" type="button" id="tech-feed-add">Adaugă codurile de mai sus la feed</button>
+            <button class="btn" type="button" id="tech-feed-save">Înlocuiește lista feed-ului cu codurile de mai sus</button>
+            <button class="link small" type="button" id="tech-feed-load">Încarcă lista salvată în căsuță</button>
           </div>
-          <p class="help">Feed-ul conține doar produsele din lista salvată, cu aceeași mapare și aceleași traduceri ca fișierul .xlsx. După salvare pornește automat o sincronizare (sub un minut); apoi se regenerează la fiecare „Sincronizează acum”.</p>
+          <p class="help">„Adaugă” păstrează produsele deja din feed; „Înlocuiește” păstrează doar codurile din căsuță. Feed-ul conține doar produsele din lista salvată, cu aceeași mapare și aceleași traduceri ca fișierul .xlsx. După salvare pornește automat o sincronizare (sub un minut); apoi se regenerează la fiecare „Sincronizează acum”.</p>
         </div>
         <p class="help">Fișierul conține doar codul, coloanele tehnice cu valori și pozele (ProductImage + AddImages). Câmpurile care nu sunt în fișier (preț, stoc, descriere) nu se schimbă la import.</p>
         <div id="tech-result" style="margin-top:12px"></div>
+      </div>
+      <div class="card" id="tech-feed-box">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Produse în feed</h2>
+          <span id="tech-feed-summary" class="small muted"></span>
+        </div>
+        <div class="toolbar" style="margin-top:10px">
+          <div class="grow"><label for="tech-feed-q">Caută în feed (cod, nume, categorie)</label><input id="tech-feed-q" type="search"></div>
+          <div class="field"><label for="tech-feed-f">Arată</label>
+            <select id="tech-feed-f">
+              <option value="">Toate</option>
+              <option value="new">Doar produse noi</option>
+              <option value="existing">Doar produse existente</option>
+              <option value="nocat">Produse noi fără categorie</option>
+              <option value="missing">Negăsite la producător</option>
+            </select></div>
+        </div>
+        <div id="tech-feed-pending" class="alert warn hidden"></div>
+        <div id="tech-feed-list"></div>
       </div>
       <details class="card" id="tech-mapping-box">
         <summary><strong>Mapare atribute → coloane Teamshare și traduceri</strong></summary>
@@ -306,6 +326,7 @@ function $(id) { return document.getElementById(id); }
 function el(tag, attrs, children) {
   var n = document.createElement(tag);
   if (attrs) for (var k in attrs) {
+    if (attrs[k] === null || attrs[k] === undefined) continue; // atribut absent (ex. disabled: null)
     if (k === 'class') n.className = attrs[k];
     else if (k === 'text') n.textContent = attrs[k];
     else if (k.indexOf('on') === 0) n.addEventListener(k.slice(2), attrs[k]);
@@ -914,7 +935,7 @@ function loadTech(force) {
     api('GET', 'bapp').catch(function (e) { if (e.status === 404) return null; throw e; })
   ]).then(function (res) {
     tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[3];
-    renderTechInfo(); renderMapping();
+    renderTechInfo(); renderMapping(); renderFeedList();
   }).catch(function (e) {
     $('tech-info').textContent = 'Eroare: ' + e.message;
   }).then(function () { tech.loading = null; });
@@ -930,6 +951,126 @@ function renderTechInfo() {
     fmtNum(Object.keys(d.index).length) + ' legate de codurile tale (' + fmtNum(d.matched.byCode) + ' după cod, ' +
     fmtNum(d.matched.byEan) + ' după EAN) · date din ' + fmtTime(d.generatedAt);
 }
+// ---------- Lista produselor din feed ----------
+tech.feedPage = 0; tech.feedRemove = {};
+function feedRows() {
+  if (!tech.data || !tech.mapping) return { rows: [], missing: [] };
+  var m = Object.assign({}, tech.mapping, { productCategories: tech.productCategories || {} });
+  var t = BAPP.buildImportTable(tech.feedCodes || [], tech.data, m, BAPP.translateValue, tech.meta.columns);
+  return { rows: t.perProduct, missing: t.missing };
+}
+function renderFeedList() {
+  var root = $('tech-feed-list'); if (!root) return; clear(root);
+  var codes = tech.feedCodes || [];
+  var st = state.overview && state.overview.status && state.overview.status.techFeed;
+  $('tech-feed-summary').textContent = codes.length
+    ? fmtNum(codes.length) + ' coduri salvate' + (st ? ' · la ultima sincronizare: ' + fmtNum(st.products) + ' produse în feed' : ' · feed-ul nu a fost încă generat')
+    : '';
+  if (!codes.length) { root.appendChild(el('div', { class: 'alert info', text: 'Feed-ul nu are încă produse. Pune codurile în căsuța de sus și apasă „Adaugă codurile de mai sus la feed”.' })); return; }
+  if (!tech.data) { root.appendChild(el('p', { class: 'small muted', text: 'Lista apare după ce se încarcă datele producătorului.' })); return; }
+  var r = feedRows();
+  var items = r.rows.map(function (p) { return { p: p, missing: false }; })
+    .concat(r.missing.map(function (c) { return { p: { code: c, supplierCode: '', values: 0, photos: 0, existing: false, category: '', family: '' }, missing: true }; }));
+  var q = normalize($('tech-feed-q').value.trim()); var f = $('tech-feed-f').value;
+  var list = items.filter(function (it) {
+    var p = it.p; var prod = tech.data.products[p.supplierCode];
+    if (f === 'new' && (it.missing || p.existing)) return false;
+    if (f === 'existing' && !p.existing) return false;
+    if (f === 'nocat' && (it.missing || p.existing || p.category)) return false;
+    if (f === 'missing' && !it.missing) return false;
+    if (q && normalize(p.code + ' ' + p.supplierCode + ' ' + ((prod && prod.n) || '') + ' ' + p.category).indexOf(q) < 0) return false;
+    return true;
+  });
+  var nNew = r.rows.filter(function (p) { return !p.existing; }).length;
+  var nNoCat = r.rows.filter(function (p) { return !p.existing && !p.category; }).length;
+  root.appendChild(el('p', { class: 'small' }, [
+    badge([fmtNum(r.rows.length) + ' găsite', 'b-ok']), ' ', badge([fmtNum(nNew) + ' noi', 'b-info']), ' ',
+    nNoCat && (tech.mapping.categoryMode || 'new') !== 'off' ? badge([fmtNum(nNoCat) + ' noi fără categorie', 'b-warn']) : null, ' ',
+    r.missing.length ? badge([fmtNum(r.missing.length) + ' negăsite la producător', 'b-bad']) : null, ' ',
+    el('span', { class: 'muted', text: '· afișez ' + fmtNum(list.length) })
+  ]));
+  var PAGE = 100; var pages = Math.max(1, Math.ceil(list.length / PAGE));
+  if (tech.feedPage >= pages) tech.feedPage = pages - 1;
+  var tb = el('tbody');
+  list.slice(tech.feedPage * PAGE, (tech.feedPage + 1) * PAGE).forEach(function (it) {
+    var p = it.p; var prod = tech.data.products[p.supplierCode]; var img = prod && prod.p && prod.p[0];
+    var removing = !!tech.feedRemove[p.code];
+    var catCell = el('td', { 'data-label': 'Categorie în feed' });
+    if (it.missing) catCell.appendChild(badge(['negăsit la producător: nu intră în feed', 'b-bad']));
+    else if (p.category) {
+      catCell.appendChild(el('div', { class: 'small', text: p.category }));
+      catCell.appendChild(badge([(tech.productCategories || {})[p.code] ? 'aleasă de tine' : 'propusă', (tech.productCategories || {})[p.code] ? 'b-ok' : 'b-muted']));
+    } else if ((tech.mapping.categoryMode || 'new') === 'off') catCell.appendChild(badge(['nu se exportă', 'b-muted']));
+    else if (p.existing) catCell.appendChild(badge(['rămâne cea actuală', 'b-muted']));
+    else catCell.appendChild(badge(['fără categorie', 'b-warn']));
+    var tr = el('tr', removing ? { style: 'opacity:.45' } : null, [
+      el('td', { class: 'thumb-cell', 'data-label': 'Poză' }, [img ? el('a', { href: img, target: '_blank', rel: 'noopener noreferrer' }, [el('img', { class: 'thumb', loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', src: img })]) : missingBox(it.missing ? 'negăsit' : 'fără poză')]),
+      el('td', { 'data-label': 'Cod' }, [el('div', { class: 'code', text: p.code }), p.supplierCode && p.supplierCode !== p.code ? el('div', { class: 'code small muted', text: p.supplierCode }) : null,
+        it.missing ? null : badge([p.existing ? 'existent' : 'produs nou', p.existing ? 'b-muted' : 'b-info'])]),
+      el('td', { 'data-label': 'Nume', text: (prod && prod.n) || '' }),
+      el('td', { class: 'num', 'data-label': 'Valori / poze', text: it.missing ? '-' : fmtNum(p.values) + ' / ' + fmtNum(p.photos) }),
+      catCell,
+      el('td', { 'data-label': '' }, [el('button', { class: 'link small', type: 'button', style: removing ? '' : 'color:var(--bad)', text: removing ? 'Anulează' : 'Scoate din feed', onclick: function () {
+        if (removing) delete tech.feedRemove[p.code]; else tech.feedRemove[p.code] = true;
+        renderFeedPending(); renderFeedList();
+      } })])
+    ]);
+    tb.appendChild(tr);
+  });
+  root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
+    el('thead', null, [el('tr', null, [el('th', { text: 'Poză' }), el('th', { text: 'Cod' }), el('th', { text: 'Nume' }), el('th', { class: 'num', text: 'Valori / poze' }), el('th', { text: 'Categorie în feed' }), el('th', { text: '' })])]),
+    tb
+  ])]));
+  if (pages > 1) {
+    root.appendChild(el('div', { class: 'pager' }, [
+      el('button', { class: 'btn', type: 'button', text: 'Înapoi', disabled: tech.feedPage === 0 ? 'disabled' : null, onclick: function () { tech.feedPage--; renderFeedList(); } }),
+      el('span', { class: 'small muted', text: 'Pagina ' + (tech.feedPage + 1) + ' din ' + pages }),
+      el('button', { class: 'btn', type: 'button', text: 'Înainte', disabled: tech.feedPage + 1 >= pages ? 'disabled' : null, onclick: function () { tech.feedPage++; renderFeedList(); } })
+    ]));
+  }
+}
+function renderFeedPending() {
+  var box = $('tech-feed-pending'); clear(box);
+  var n = Object.keys(tech.feedRemove).length;
+  box.classList.toggle('hidden', !n);
+  if (!n) return;
+  box.appendChild(document.createTextNode(fmtNum(n) + ' produse marcate pentru scoatere din feed. '));
+  box.appendChild(el('button', { class: 'btn primary', type: 'button', text: 'Salvează și regenerează feed-ul', onclick: function () {
+    var codes = (tech.feedCodes || []).filter(function (c) { return !tech.feedRemove[c]; });
+    saveFeedCodes(codes, fmtNum(n) + ' produse scoase din feed.');
+  } }));
+  box.appendChild(document.createTextNode(' '));
+  box.appendChild(el('button', { class: 'link small', type: 'button', text: 'Renunță', onclick: function () { tech.feedRemove = {}; renderFeedPending(); renderFeedList(); } }));
+}
+['tech-feed-q', 'tech-feed-f'].forEach(function (id) {
+  $(id).addEventListener(id === 'tech-feed-q' ? 'input' : 'change', function () { tech.feedPage = 0; renderFeedList(); });
+});
+/** Salvează lista feed-ului (și categoriile nesalvate), apoi pornește sincronizarea. */
+function saveFeedCodes(codes, doneMsg) {
+  return (tech.catDirty ? saveProductCategories() : Promise.resolve()).then(function () {
+    return api('PUT', 'bapp-feed-codes', { codes: codes });
+  }).then(function (res) {
+    tech.feedCodes = codes; tech.feedRemove = {};
+    renderTechFeedInfo(); renderFeedPending(); renderFeedList();
+    if (!state.syncing) {
+      toast((doneMsg ? doneMsg + ' ' : '') + fmtNum(res.count) + ' coduri în feed. Pornesc sincronizarea ca să regenerez feed-ul…');
+      setTimeout(function () { $('sync').click(); }, 800);
+    } else {
+      toast((doneMsg ? doneMsg + ' ' : '') + fmtNum(res.count) + ' coduri în feed. Se aplică la sincronizarea în curs sau la următoarea.');
+    }
+    return res;
+  }).catch(function (e) { toast('Eroare: ' + e.message); });
+}
+$('tech-feed-add').addEventListener('click', function () {
+  loadTech().then(function () {
+    var add = techCodes(); if (!add.length) return toast('Pune cel puțin un cod în căsuță.');
+    var cur = tech.feedCodes || []; var seen = {}; cur.forEach(function (c) { seen[c] = true; });
+    var fresh = add.filter(function (c) { if (seen[c]) return false; seen[c] = true; return true; });
+    if (!fresh.length && !tech.catDirty) return toast('Toate codurile sunt deja în feed.');
+    saveFeedCodes(cur.concat(fresh), fmtNum(fresh.length) + ' coduri adăugate.');
+  });
+});
+
 function renderTechFeedInfo() {
   var root = $('tech-feed-info'); clear(root);
   var n = (tech.feedCodes || []).length;
@@ -940,21 +1081,13 @@ function renderTechFeedInfo() {
   if (st) root.appendChild(document.createTextNode(' · la ultima sincronizare: ' + fmtNum(st.products) + ' produse în feed' + (st.missing ? ', ' + fmtNum(st.missing) + ' negăsite' : '')));
 }
 $('tech-feed-save').addEventListener('click', function () {
-  var codes = techCodes();
-  var msg = codes.length ? 'Salvez ' + fmtNum(codes.length) + ' coduri pentru feed…' : 'Golesc lista feed-ului…';
-  toast(msg);
-  (tech.catDirty ? saveProductCategories() : Promise.resolve()).then(function () {
-    return api('PUT', 'bapp-feed-codes', { codes: codes });
-  }).then(function (res) {
-    tech.feedCodes = codes; renderTechFeedInfo();
-    // Feed-ul se generează la sincronizare: o pornim imediat, ca linkul să funcționeze.
-    if (!state.syncing && res.count) {
-      toast(fmtNum(res.count) + ' coduri salvate. Pornesc sincronizarea ca să generez feed-ul…');
-      setTimeout(function () { $('sync').click(); }, 800);
-    } else {
-      toast(fmtNum(res.count) + ' coduri salvate. Feed-ul se actualizează la următoarea sincronizare.');
-    }
-  }).catch(function (e) { toast('Eroare: ' + e.message); });
+  var codes = techCodes(); var cur = (tech.feedCodes || []).length;
+  if (cur && !tech.confirmReplace) {
+    tech.confirmReplace = true; setTimeout(function () { tech.confirmReplace = false; }, 5000);
+    return toast('Feed-ul are ' + fmtNum(cur) + ' coduri. Apasă din nou în 5 secunde ca să le înlocuiești cu cele ' + fmtNum(codes.length) + ' din căsuță.');
+  }
+  tech.confirmReplace = false;
+  saveFeedCodes(codes, 'Lista feed-ului a fost înlocuită.');
 });
 $('tech-feed-load').addEventListener('click', function () {
   loadTech().then(function () {
@@ -1015,7 +1148,7 @@ $('tech-preview').addEventListener('click', function () {
           tech.catDirty = true; $('tech-preview').click();
         } }),
         el('button', { class: 'btn primary', type: 'button', text: 'Salvează categoriile', onclick: function () {
-          saveProductCategories().then(function (r) { toast(fmtNum(r.count) + ' categorii salvate. Se aplică în fișier și în feed.'); }).catch(function (e) { toast('Eroare: ' + e.message); });
+          saveProductCategories().then(function (r) { renderFeedList(); toast(fmtNum(r.count) + ' categorii salvate. Se aplică în fișier și în feed de la următoarea sincronizare.'); }).catch(function (e) { toast('Eroare: ' + e.message); });
         } }),
         el('span', { id: 'tech-cat-state', class: 'small', style: 'color:var(--warn)' })
       ]));
@@ -1067,7 +1200,7 @@ function categoryInput(p) {
   input.addEventListener('change', function () {
     var v = input.value.trim();
     if (v) tech.productCategories[p.code] = v; else delete tech.productCategories[p.code];
-    tech.catDirty = true; updateCatState();
+    tech.catDirty = true; updateCatState(); renderFeedList();
   });
   box.appendChild(input);
   var marks = el('div', { class: 'row', style: 'gap:4px;margin-top:3px' });
