@@ -422,3 +422,36 @@ describe('tag-uri repetate în același produs (Gallery_Images de două ori)', (
     expect(collapseDuplicateTags({ a: ['x', 'x'], b: ['x', 'y'], c: 'z' })).toEqual({ a: 'x', b: ['x', 'y'], c: 'z' });
   });
 });
+
+describe('runSync: feed cu date tehnice', () => {
+  const BAPP = `<response><products><product><code>0012</code><code_ean>1</code_ean><photos><photo><url>https://cdn.x/a.webp</url><order>1</order></photo></photos>
+<sections><section><categories><category><attributes><attribute><slug>body_color</slug><title>Culoarea corpului</title><value>White</value></attribute></attributes></category></categories></section></sections></product></products></response>`;
+
+  it('generează /date-tehnice.xml doar pentru codurile salvate, cu maparea salvată', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify(['0012', 'LIPSA']));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '' } as Env), kv);
+    expect(s.ok).toBe(true);
+    expect(s.techFeed).toMatchObject({ codes: 2, products: 1, missing: 1 });
+    const xml = kv.store.get(KV_KEYS.techFeed)!;
+    expect(xml).toContain('<Product_Code><![CDATA[0012]]></Product_Code>');
+    expect(xml).toContain('<Culoarea_corpului_P39493><![CDATA[Alb]]></Culoarea_corpului_P39493>');
+    expect(s.warnings?.join(' ')).toMatch(/1 coduri negăsite/);
+    vi.unstubAllGlobals();
+  });
+
+  it('folosește ultimele date bune din KV dacă feed-ul producătorului nu răspunde', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify(['0012']));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
+    await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '' } as Env), kv);
+    kv.store.delete(KV_KEYS.techFeed);
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.includes('bapp') ? new Response('eroare', { status: 500 }) : new Response(SAMPLE))));
+    const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '' } as Env), kv);
+    expect(s.bapp?.error).toMatch(/HTTP 500/);
+    expect(s.techFeed).toMatchObject({ products: 1 });
+    expect(kv.store.get(KV_KEYS.techFeed)).toContain('0012');
+    vi.unstubAllGlobals();
+  });
+});

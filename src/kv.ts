@@ -19,6 +19,8 @@ export const KV_KEYS = {
   bappData: 'bapp:data', // date tehnice și poze de la producător (JSON compact)
   bappHash: 'bapp:hash', // amprenta ultimelor date scrise (scriem doar dacă s-au schimbat)
   bappMapping: 'admin:bapp-mapping', // maparea atribut -> coloană Teamshare și traducerile
+  bappFeedCodes: 'admin:bapp-feed-codes', // codurile alese pentru /date-tehnice.xml
+  techFeed: 'feed:date-tehnice.xml', // feed XML cu date tehnice și poze pentru importul în Teamshare
 } as const;
 
 export interface KVStore {

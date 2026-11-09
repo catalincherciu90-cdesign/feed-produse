@@ -212,6 +212,15 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
           <button class="link small" type="button" id="tech-all">Pune toate produsele legate</button>
           <button class="link small" type="button" id="tech-clear">Golește</button>
         </div>
+        <div class="card" style="margin:14px 0 0;background:var(--bg)">
+          <h3>Feed pentru importul în site (Teamshare)</h3>
+          <p id="tech-feed-info" class="small muted">Se încarcă…</p>
+          <div class="row">
+            <button class="btn" type="button" id="tech-feed-save">Salvează lista de mai sus pentru feed</button>
+            <button class="link small" type="button" id="tech-feed-load">Încarcă lista salvată</button>
+          </div>
+          <p class="help">Feed-ul conține doar produsele din lista salvată, cu aceeași mapare și aceleași traduceri ca fișierul .xlsx. Se regenerează la fiecare „Sincronizează acum”.</p>
+        </div>
         <p class="help">Fișierul conține doar codul, coloanele tehnice cu valori și pozele (ProductImage + AddImages). Câmpurile care nu sunt în fișier (preț, stoc, descriere) nu se schimbă la import.</p>
         <div id="tech-result" style="margin-top:12px"></div>
       </div>
@@ -544,6 +553,7 @@ function renderStatus() {
     feedLink('CEL', '/cel.xml'),
     feedLink('Clienți', '/feed.xml'),
     feedLink('Facebook', '/facebook.xml'),
+    feedLink('Date tehnice', '/date-tehnice.xml'),
     el('p', { class: 'help', text: 'Dacă ai setat CEL_FEED_TOKEN sau CLIENT_FEED_TOKEN, adaugă la link ?token=... .' }),
     el('h3', { style: 'margin-top:14px', text: 'Reguli în vigoare' }),
     el('p', { class: 'small', style: 'margin:0' }, [
@@ -899,9 +909,10 @@ function loadTech(force) {
   $('tech-info').textContent = 'Se încarcă datele producătorului (~3 MB)…';
   tech.loading = Promise.all([
     api('GET', 'bapp-mapping'),
+    api('GET', 'bapp-feed-codes').then(function (r) { tech.feedCodes = r.codes || []; renderTechFeedInfo(); }),
     api('GET', 'bapp').catch(function (e) { if (e.status === 404) return null; throw e; })
   ]).then(function (res) {
-    tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[1];
+    tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[2];
     renderTechInfo(); renderMapping();
   }).catch(function (e) {
     $('tech-info').textContent = 'Eroare: ' + e.message;
@@ -918,6 +929,30 @@ function renderTechInfo() {
     fmtNum(Object.keys(d.index).length) + ' legate de codurile tale (' + fmtNum(d.matched.byCode) + ' după cod, ' +
     fmtNum(d.matched.byEan) + ' după EAN) · date din ' + fmtTime(d.generatedAt);
 }
+function renderTechFeedInfo() {
+  var root = $('tech-feed-info'); clear(root);
+  var n = (tech.feedCodes || []).length;
+  var st = state.overview && state.overview.status && state.overview.status.techFeed;
+  root.appendChild(document.createTextNode('Link: '));
+  root.appendChild(el('a', { href: '/date-tehnice.xml', target: '_blank', rel: 'noopener', text: location.origin + '/date-tehnice.xml' }));
+  root.appendChild(document.createTextNode(' · ' + (n ? fmtNum(n) + ' coduri salvate' : 'nicio listă salvată')));
+  if (st) root.appendChild(document.createTextNode(' · la ultima sincronizare: ' + fmtNum(st.products) + ' produse în feed' + (st.missing ? ', ' + fmtNum(st.missing) + ' negăsite' : '')));
+}
+$('tech-feed-save').addEventListener('click', function () {
+  var codes = techCodes();
+  var msg = codes.length ? 'Salvez ' + fmtNum(codes.length) + ' coduri pentru feed…' : 'Golesc lista feed-ului…';
+  toast(msg);
+  api('PUT', 'bapp-feed-codes', { codes: codes }).then(function (res) {
+    tech.feedCodes = codes; renderTechFeedInfo();
+    toast(fmtNum(res.count) + ' coduri salvate. Feed-ul se actualizează la următoarea sincronizare.');
+  }).catch(function (e) { toast('Eroare: ' + e.message); });
+});
+$('tech-feed-load').addEventListener('click', function () {
+  loadTech().then(function () {
+    $('tech-codes').value = (tech.feedCodes || []).join('\n');
+    toast(fmtNum((tech.feedCodes || []).length) + ' coduri încărcate din lista salvată');
+  });
+});
 function techTable() {
   return BAPP.buildImportTable(techCodes(), tech.data, tech.mapping, BAPP.translateValue, tech.meta.columns);
 }

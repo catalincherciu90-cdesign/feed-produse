@@ -6,7 +6,7 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
-import { defaultMapping, UNCERTAIN_RULES, validateMapping } from './bapp';
+import { defaultMapping, UNCERTAIN_RULES, validateFeedCodes, validateMapping } from './bapp';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 
 export interface AdminEnv extends TriggerEnv {
@@ -174,6 +174,17 @@ export async function handleAdmin(
       case 'DELETE /admin/api/bapp-mapping': {
         await kv.delete(KV_KEYS.bappMapping);
         return json({ ok: true });
+      }
+
+      case 'GET /admin/api/bapp-feed-codes': {
+        const saved = await kv.get(KV_KEYS.bappFeedCodes, { cacheTtl: 30 });
+        return raw(`{"codes":${saved ?? '[]'}}`);
+      }
+
+      case 'PUT /admin/api/bapp-feed-codes': {
+        const codes = validateFeedCodes(await readBody(req, 512 * 1024));
+        await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify(codes));
+        return json({ ok: true, count: codes.length });
       }
 
       case 'POST /admin/api/sync': {

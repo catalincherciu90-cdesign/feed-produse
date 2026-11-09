@@ -215,3 +215,14 @@ describe('API mapare date tehnice', () => {
     expect(await (await call('GET', '/admin/api/bapp')).text()).toBe('{"products":{}}');
   });
 });
+
+describe('API listă coduri pentru feed', () => {
+  it('salvează și întoarce lista', async () => {
+    const { kv, call } = setup();
+    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: [] });
+    const r = await call('PUT', '/admin/api/bapp-feed-codes', { codes: ['BR-1', 'BR-2', 'BR-1'] });
+    expect(await r.json()).toEqual({ ok: true, count: 2 });
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappFeedCodes)!)).toEqual(['BR-1', 'BR-2']);
+    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: ['BR-1', 'BR-2'] });
+  });
+});

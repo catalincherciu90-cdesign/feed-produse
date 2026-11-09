@@ -8,7 +8,9 @@ import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockR
 import { isValidGtin } from './ean';
 import { getJson, KV_KEYS, type KVStore } from './kv';
 import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
+import { buildImportTable, buildTechFeedXml, defaultMapping, translateValue, validateMapping, type BappData } from './bapp';
 import { parseBapp } from './bappParse';
+import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 import { fetchSource, parseFeed, type Product } from './source';
 
 export { KV_KEYS };
@@ -33,6 +35,7 @@ export interface SyncStatus {
     fieldsUsed: Record<string, string | undefined>;
   };
   celFeed?: { products: number; orderable: number; blockedNoPrice: number; bytes: number };
+  techFeed?: { codes: number; products: number; missing: number; columns: number; bytes: number };
   bapp?: { products: number; linked: number; byCode: number; byEan: number; changed: boolean; bytes: number; error?: string };
   facebookFeed?: { included: number; inStock: number; skipped: { noPrice: number; noLink: number; noImage: number }; bytes: number };
   cel?: {
@@ -301,6 +304,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
     }
 
     // 2b3. Date tehnice și poze de la producător (bapp.ro). O eroare aici nu oprește sincronizarea.
+    let bappData: BappData | null = null;
     if (config.bapp.url) {
       try {
         const res = await fetch(config.bapp.url, { headers: { Accept: 'application/xml, text/xml, */*' } });
@@ -315,6 +319,7 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         const hash = await sha256(body);
         const changed = hash !== (await kv.get(KV_KEYS.bappHash));
         const json = JSON.stringify(data);
+        bappData = data;
         if (changed) {
           await kv.put(KV_KEYS.bappData, json);
           await kv.put(KV_KEYS.bappHash, hash);
@@ -331,6 +336,33 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         const msg = e instanceof Error ? e.message : String(e);
         status.bapp = { products: 0, linked: 0, byCode: 0, byEan: 0, changed: false, bytes: 0, error: msg };
         warnings.push(`Datele tehnice de la producător nu au fost actualizate: ${msg}`);
+      }
+    }
+
+    // 2b4. Feed cu date tehnice pentru importul în Teamshare: doar codurile alese în panou
+    const feedCodes = await getJson<string[]>(kv, KV_KEYS.bappFeedCodes);
+    if (feedCodes) {
+      try {
+        if (!bappData) bappData = await getJson<BappData>(kv, KV_KEYS.bappData); // ultima versiune bună
+        if (!bappData) throw new Error('nu există date de la producător (setează BAPP_FEED_URL)');
+        let mapping = defaultMapping();
+        const savedMapping = await getJson<unknown>(kv, KV_KEYS.bappMapping);
+        if (savedMapping) mapping = validateMapping(savedMapping, TEAMSHARE_COLUMNS);
+        const table = buildImportTable(feedCodes, bappData, mapping, translateValue, TEAMSHARE_COLUMNS);
+        const xml = buildTechFeedXml(table.rows);
+        await kv.put(KV_KEYS.techFeed, xml);
+        status.techFeed = {
+          codes: feedCodes.length,
+          products: table.perProduct.length,
+          missing: table.missing.length,
+          columns: table.rows[0].length,
+          bytes: xml.length,
+        };
+        if (table.missing.length) {
+          warnings.push(`Feed date tehnice: ${table.missing.length} coduri negăsite la producător (ex. ${table.missing.slice(0, 5).join(', ')}).`);
+        }
+      } catch (e) {
+        warnings.push(`Feed-ul cu date tehnice nu a fost actualizat: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 

@@ -95,6 +95,10 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 
 **Traducerile** (Black → Negru, 2 Years → 2 ani, Not-Dimmable → Nedimabil etc.) se editează din același loc. Valorile fără traducere rămân ca la producător.
 
+**Feed pentru importul în site:** `https://feed-produse.catalincherciu90.workers.dev/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
+
+Structura e ca exportul Teamshare (`<products><product>`, valori în CDATA, celulele goale lipsesc). Tag-urile sunt numele coloanelor fără diacritice, cu `_` în loc de spații și semne, și cu ID-ul proprietății, pentru că șablonul are coloane cu același nume: `Product_Code`, `Culoarea_corpului_P39493`, `ProductImage_P39360`, `AddImages_P39379`.
+
 **Setare:** secretul GitHub `BAPP_FEED_URL` (linkul feed-ului de atribute, cu `lang=ro`). Feed-ul se descarcă la fiecare „Sincronizează acum”; în Cloudflare se scrie doar dacă datele s-au schimbat.
 
 **De verificat la primul import (cu 1-2 produse):** că Teamshare acceptă pozele ca linkuri externe în format `.webp` de pe `cdn.braytron.center`, că separatorul `#` e cel corect pentru `AddImages` și că celulele goale nu șterg valori existente.
@@ -187,6 +191,7 @@ Panoul rulează pe planul gratuit Cloudflare. Lista de produse e generată de si
 | `/feed.xml` | public (sau `CLIENT_FEED_TOKEN`) | feed-ul pentru clienți |
 | `/cel.xml` | public (sau `CEL_FEED_TOKEN`) | feed-ul pentru CEL |
 | `/facebook.xml` | public | catalogul Meta (Facebook / Instagram) |
+| `/date-tehnice.xml` | public | date tehnice și poze Braytron pentru produsele alese, pentru importul în Teamshare |
 | `/status` | `ADMIN_TOKEN` | rezultatul ultimei sincronizări (JSON) |
 | `/admin` | `ADMIN_TOKEN` | panoul de admin |
 

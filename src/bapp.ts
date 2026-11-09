@@ -257,8 +257,9 @@ export function buildImportTable(
       key = code.slice(mapping.codePrefix.length);
     }
     if (key && data.products[key]) {
-      // În fișier punem mereu codul tău (ex. BR-BG38-12481), chiar dacă ai scris codul producătorului.
-      const own = reverse[key] || code;
+      // În fișier punem mereu codul tău: dacă ai scris codul producătorului (ex. BG38-12481),
+      // îl înlocuim cu codul tău legat de el (BR-BG38-12481). Un cod al tău rămâne neschimbat.
+      const own = data.index[code] ? code : reverse[key] || code;
       if (own !== code && seen[own]) continue;
       seen[own] = true;
       found.push({ code: own, prod: data.products[key] });
@@ -466,4 +467,69 @@ export function validateMapping(raw: unknown, columns: readonly string[]): BappM
     imageSeparator: sep,
     codePrefix: str(r.codePrefix ?? '', 20, 'Prefixul codurilor'),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Feed XML pentru importul în Teamshare (/date-tehnice.xml), în stilul exportului Teamshare
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Numele de tag XML pentru o coloană din șablon, după convenția exportului Teamshare
+ * (spațiile și semnele devin „_”, fără diacritice). La proprietăți păstrăm și ID-ul (P12345),
+ * pentru că șablonul are coloane cu același nume (ex. „Material:” de 3 ori).
+ *   ProductCode                     -> Product_Code
+ *   Culoarea corpului: - P39493     -> Culoarea_corpului_P39493
+ *   ProductImage - P39360           -> ProductImage_P39360
+ */
+export function teamshareTag(column: string): string {
+  if (column === 'ProductCode') return 'Product_Code';
+  const m = /^(.*?)\s*-\s*(P\d+)\s*$/.exec(column);
+  const base = (m ? m[1] : column)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  const tag = m ? (base ? `${base}_${m[2]}` : m[2]) : base;
+  return /^[A-Za-z_]/.test(tag) ? tag : `_${tag}`;
+}
+
+function cdataTs(v: string): string {
+  const clean = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  return `<![CDATA[${clean.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
+}
+
+/** Feed XML din tabelul de import (primul rând = antet). Celulele goale nu apar în XML. */
+export function buildTechFeedXml(rows: string[][]): string {
+  const header = rows[0] ?? [];
+  const tags = header.map(teamshareTag);
+  const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<products>'];
+  for (const row of rows.slice(1)) {
+    lines.push('<product>');
+    row.forEach((v, i) => {
+      if (v) lines.push(`<${tags[i]}>${cdataTs(v)}</${tags[i]}>`);
+    });
+    lines.push('</product>');
+  }
+  lines.push('</products>');
+  return lines.join('\n') + '\n';
+}
+
+export const FEED_CODES_LIMIT = 10000;
+
+/** Validează lista de coduri salvată pentru feed. */
+export function validateFeedCodes(raw: unknown): string[] {
+  const list = (raw as { codes?: unknown })?.codes;
+  if (!Array.isArray(list)) throw new Error('codes trebuie să fie o listă');
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const c of list) {
+    if (typeof c !== 'string') throw new Error('Codurile trebuie să fie text');
+    const code = c.trim();
+    if (!code || seen.has(code)) continue;
+    if (code.length > 100) throw new Error(`Cod prea lung: ${code.slice(0, 30)}…`);
+    seen.add(code);
+    out.push(code);
+  }
+  if (out.length > FEED_CODES_LIMIT) throw new Error(`Maximum ${FEED_CODES_LIMIT} coduri`);
+  return out;
 }

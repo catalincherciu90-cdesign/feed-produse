@@ -64,6 +64,15 @@ export default {
       });
     }
 
+    if (url.pathname === '/date-tehnice.xml' && req.method === 'GET') {
+      // Date tehnice și poze de la producător, pentru produsele alese în panou (import în Teamshare).
+      const body = await env.FEED_KV.get(KV_KEYS.techFeed, 'stream');
+      if (!body) return new Response('Feed-ul cu date tehnice nu a fost generat încă', { status: 503 });
+      return new Response(body, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
+      });
+    }
+
     if (url.pathname === '/facebook.xml' && req.method === 'GET') {
       // Catalog Meta: conține doar date publice de pe site (fără stocul real).
       const body = await env.FEED_KV.get(KV_KEYS.facebookFeed, 'stream');

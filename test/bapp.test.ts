@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildImportTable, buildXlsx, defaultMapping, DEFAULT_RULES, translateValue, validateMapping } from '../src/bapp';
+import { buildImportTable, buildTechFeedXml, buildXlsx, defaultMapping, DEFAULT_RULES, teamshareTag, translateValue, validateFeedCodes, validateMapping } from '../src/bapp';
 import { parseBapp } from '../src/bappParse';
 import { TEAMSHARE_COLUMNS } from '../src/teamshareColumns';
 
@@ -71,6 +71,12 @@ describe('feed producător (bapp.ro)', () => {
     expect(t.rows[2][h.indexOf('ProductImage - P39360')]).toBe('');
   });
 
+  it('două coduri ale tale legate de același produs al producătorului rămân separate', () => {
+    const d2 = { ...data, index: { ...data.index, 'BR-DUBLU': 'BH07-04101' } };
+    const t = buildImportTable(['BR-BH07-04101', 'BR-DUBLU', 'BH07-04101'], d2, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    expect(t.perProduct.map((p) => p.code).sort()).toEqual(['BR-BH07-04101', 'BR-DUBLU']);
+  });
+
   it('fără traducere, valorile rămân ca la producător', () => {
     const m = { ...defaultMapping(), translate: false };
     const t = buildImportTable(['BR-BH07-04101'], data, m, translateValue, TEAMSHARE_COLUMNS);
@@ -97,5 +103,34 @@ describe('feed producător (bapp.ro)', () => {
     for (const [slug, r] of Object.entries(DEFAULT_RULES)) {
       if (r.column) expect(TEAMSHARE_COLUMNS, slug).toContain(r.column);
     }
+  });
+});
+
+describe('feed /date-tehnice.xml', () => {
+  it('numele tag-urilor urmează convenția exportului Teamshare și păstrează ID-ul proprietății', () => {
+    expect(teamshareTag('ProductCode')).toBe('Product_Code');
+    expect(teamshareTag('Culoarea corpului: - P39493')).toBe('Culoarea_corpului_P39493');
+    expect(teamshareTag('Bucăți pe cutie (PCS/CTN) - P39399')).toBe('Bucati_pe_cutie_PCS_CTN_P39399');
+    expect(teamshareTag('ProductImage - P39360')).toBe('ProductImage_P39360');
+    expect(teamshareTag(' - P39453')).toBe('P39453');
+    expect(teamshareTag('Material: - P39441')).not.toBe(teamshareTag('Material: - P39391'));
+  });
+
+  it('generează XML valid, cu CDATA și fără celule goale', () => {
+    const t = buildImportTable(['BR-BH07-04101', 'ALT-COD'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    const xml = buildTechFeedXml(t.rows);
+    expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<products>')).toBe(true);
+    expect(xml).toContain('<Product_Code><![CDATA[BR-BH07-04101]]></Product_Code>');
+    expect(xml).toContain('<Culoarea_corpului_P39493><![CDATA[Negru]]></Culoarea_corpului_P39493>');
+    expect(xml).toContain('<ProductImage_P39360><![CDATA[https://cdn.x/1.webp]]></ProductImage_P39360>');
+    expect(xml).toContain('<IP_Grad_de_protectie_P39333><![CDATA[IP20 > IP10]]></IP_Grad_de_protectie_P39333>');
+    expect(xml.match(/<product>/g)).toHaveLength(2);
+    expect(xml).not.toMatch(/<ProductImage_P39360><!\[CDATA\[\]\]>/); // al doilea produs nu are poze: tag-ul lipsește
+  });
+
+  it('validează lista de coduri', () => {
+    expect(validateFeedCodes({ codes: [' A ', 'B', 'A', ''] })).toEqual(['A', 'B']);
+    expect(() => validateFeedCodes({ codes: 'A' })).toThrow();
+    expect(() => validateFeedCodes({ codes: ['x'.repeat(101)] })).toThrow(/lung/);
   });
 });
