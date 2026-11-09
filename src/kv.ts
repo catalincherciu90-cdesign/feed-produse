@@ -16,6 +16,9 @@ export const KV_KEYS = {
   overrides: 'admin:overrides', // excepții pe produs din panou
   snapshot: 'admin:products', // lista de produse pentru panou, scrisă la fiecare sincronizare
   lastDispatch: 'admin:lastDispatch', // ultima pornire a sincronizării din panou
+  bappData: 'bapp:data', // date tehnice și poze de la producător (JSON compact)
+  bappHash: 'bapp:hash', // amprenta ultimelor date scrise (scriem doar dacă s-au schimbat)
+  bappMapping: 'admin:bapp-mapping', // maparea atribut -> coloană Teamshare și traducerile
 } as const;
 
 export interface KVStore {

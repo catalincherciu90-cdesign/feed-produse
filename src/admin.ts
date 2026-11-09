@@ -6,6 +6,8 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
+import { defaultMapping, UNCERTAIN_RULES, validateMapping } from './bapp';
+import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 
 export interface AdminEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
@@ -45,11 +47,11 @@ export function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function readBody(req: Request): Promise<unknown> {
+async function readBody(req: Request, max = MAX_BODY): Promise<unknown> {
   const len = Number(req.headers.get('Content-Length') ?? 0);
-  if (len > MAX_BODY) throw new Error('Cerere prea mare');
+  if (len > max) throw new Error('Cerere prea mare');
   const text = await req.text();
-  if (text.length > MAX_BODY) throw new Error('Cerere prea mare');
+  if (text.length > max) throw new Error('Cerere prea mare');
   try {
     return JSON.parse(text);
   } catch {
@@ -143,6 +145,35 @@ export async function handleAdmin(
         }
         await kv.put(KV_KEYS.overrides, JSON.stringify(overrides));
         return json({ ok: true, sku, override });
+      }
+
+      case 'GET /admin/api/bapp': {
+        // Datele producătorului (JSON ~3,5 MB): le trimitem direct din KV, fără parsare în Worker.
+        const body = await kv.get(KV_KEYS.bappData, { type: 'stream', cacheTtl: 30 });
+        if (!body) return error('Datele producătorului apar după prima sincronizare cu BAPP_FEED_URL setat', 404);
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS },
+        });
+      }
+
+      case 'GET /admin/api/bapp-mapping': {
+        const saved = await kv.get(KV_KEYS.bappMapping, { cacheTtl: 30 });
+        return raw(
+          `{"mapping":${saved ?? JSON.stringify(defaultMapping())},"saved":${saved ? 'true' : 'false'},` +
+            `"defaults":${JSON.stringify(defaultMapping())},"uncertain":${JSON.stringify(UNCERTAIN_RULES)},` +
+            `"columns":${JSON.stringify(TEAMSHARE_COLUMNS)}}`,
+        );
+      }
+
+      case 'PUT /admin/api/bapp-mapping': {
+        const mapping = validateMapping(await readBody(req, 256 * 1024), TEAMSHARE_COLUMNS);
+        await kv.put(KV_KEYS.bappMapping, JSON.stringify(mapping));
+        return json({ ok: true, mapping });
+      }
+
+      case 'DELETE /admin/api/bapp-mapping': {
+        await kv.delete(KV_KEYS.bappMapping);
+        return json({ ok: true });
       }
 
       case 'POST /admin/api/sync': {

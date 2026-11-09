@@ -190,3 +190,28 @@ describe('butonul Sincronizează acum', () => {
     expect(f).not.toHaveBeenCalled();
   });
 });
+
+describe('API mapare date tehnice', () => {
+  it('întoarce maparea propusă, salvează una validă și respinge coloane inexistente', async () => {
+    const { kv, call } = setup();
+    const first = (await (await call('GET', '/admin/api/bapp-mapping')).json()) as { saved: boolean; mapping: { rules: Record<string, { column: string }> }; columns: string[]; uncertain: string[] };
+    expect(first.saved).toBe(false);
+    expect(first.columns).toContain('ProductCode');
+    expect(first.uncertain).toContain('material');
+    const m = first.mapping;
+    m.rules.material = { column: 'Material - P39801' };
+    expect((await call('PUT', '/admin/api/bapp-mapping', m)).status).toBe(200);
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappMapping)!).rules.material.column).toBe('Material - P39801');
+    m.rules.material = { column: 'Nu există' };
+    expect((await call('PUT', '/admin/api/bapp-mapping', m)).status).toBe(400);
+    await call('DELETE', '/admin/api/bapp-mapping');
+    expect(kv.store.has(KV_KEYS.bappMapping)).toBe(false);
+  });
+
+  it('datele producătorului: 404 până la prima sincronizare', async () => {
+    const { kv, call } = setup();
+    expect((await call('GET', '/admin/api/bapp')).status).toBe(404);
+    kv.store.set(KV_KEYS.bappData, '{"products":{}}');
+    expect(await (await call('GET', '/admin/api/bapp')).text()).toBe('{"products":{}}');
+  });
+});

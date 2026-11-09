@@ -56,6 +56,7 @@ jobs:
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
           CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          BAPP_FEED_URL: ${{ secrets.BAPP_FEED_URL }} # feed-ul de atribute Braytron (opțional)
 
           # Reguli
           AVAILABLE_MIN_STOCK: "10" # feed clienți: stoc >= 10 disponibil, sub 10 indisponibil
@@ -90,6 +91,8 @@ jobs:
           CEL_FEED_DROP_FIELDS: GreenTax
 
           # Catalog Facebook / Instagram (Meta Commerce Manager): /facebook.xml
+          BAPP_CODE_PREFIX: BR- # codul tău = BR- + codul Braytron
+
           FB_FEED_ENABLED: "true"
           FB_SHOP_NAME: SpotVision Electric
           FB_SHOP_URL: https://www.spotvisionelectric.ro

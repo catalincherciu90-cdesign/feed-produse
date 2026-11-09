@@ -8,6 +8,7 @@ import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockR
 import { isValidGtin } from './ean';
 import { getJson, KV_KEYS, type KVStore } from './kv';
 import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
+import { parseBapp } from './bappParse';
 import { fetchSource, parseFeed, type Product } from './source';
 
 export { KV_KEYS };
@@ -32,6 +33,7 @@ export interface SyncStatus {
     fieldsUsed: Record<string, string | undefined>;
   };
   celFeed?: { products: number; orderable: number; blockedNoPrice: number; bytes: number };
+  bapp?: { products: number; linked: number; byCode: number; byEan: number; changed: boolean; bytes: number; error?: string };
   facebookFeed?: { included: number; inStock: number; skipped: { noPrice: number; noLink: number; noImage: number }; bytes: number };
   cel?: {
     skipped?: string;
@@ -181,6 +183,11 @@ export function commonPrefix(urls: string[]): string {
   return pre.slice(0, pre.lastIndexOf('/') + 1);
 }
 
+async function sha256(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function loadAdmin(kv: KVStore, config: Config, warnings: string[]) {
   let settings = settingsFromConfig(config);
   let source: 'panou' | 'workflow' = 'workflow';
@@ -291,6 +298,40 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
       });
       await kv.put(KV_KEYS.facebookFeed, fb.xml);
       status.facebookFeed = { included: fb.included, inStock: fb.inStock, skipped: fb.skipped, bytes: fb.xml.length };
+    }
+
+    // 2b3. Date tehnice și poze de la producător (bapp.ro). O eroare aici nu oprește sincronizarea.
+    if (config.bapp.url) {
+      try {
+        const res = await fetch(config.bapp.url, { headers: { Accept: 'application/xml, text/xml, */*' } });
+        if (!res.ok) throw new Error(`feed-ul producătorului a răspuns cu HTTP ${res.status}`);
+        const data = parseBapp(await res.text(), products, {
+          codePrefix: config.bapp.codePrefix,
+          source: new URL(config.bapp.url).host,
+          generatedAt: status.startedAt,
+        });
+        // Amprenta nu include data generării, ca să scriem în KV doar când datele chiar s-au schimbat.
+        const body = JSON.stringify({ ...data, generatedAt: '' });
+        const hash = await sha256(body);
+        const changed = hash !== (await kv.get(KV_KEYS.bappHash));
+        const json = JSON.stringify(data);
+        if (changed) {
+          await kv.put(KV_KEYS.bappData, json);
+          await kv.put(KV_KEYS.bappHash, hash);
+        }
+        status.bapp = {
+          products: Object.keys(data.products).length,
+          linked: Object.keys(data.index).length,
+          byCode: data.matched.byCode,
+          byEan: data.matched.byEan,
+          changed,
+          bytes: json.length,
+        };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        status.bapp = { products: 0, linked: 0, byCode: 0, byEan: 0, changed: false, bytes: 0, error: msg };
+        warnings.push(`Datele tehnice de la producător nu au fost actualizate: ${msg}`);
+      }
     }
 
     // 2c. Lista de produse pentru panou

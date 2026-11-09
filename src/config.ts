@@ -42,6 +42,10 @@ export interface Env {
   // Feed CEL: câmpuri din sursă care nu apar în feed, separate prin virgulă (ex. GreenTax)
   CEL_FEED_DROP_FIELDS?: string;
 
+  // Date tehnice și poze de la producător (bapp.ro / Braytron) pentru importul în Teamshare
+  BAPP_FEED_URL?: string; // secret: linkul feed-ului de atribute
+  BAPP_CODE_PREFIX?: string; // implicit BR-: prefixul codurilor tale față de codurile producătorului
+
   // Catalog Facebook (Meta Commerce Manager): /facebook.xml
   FB_FEED_ENABLED?: string; // implicit "false"
   FB_SHOP_NAME?: string; // ex. SpotVision Electric
@@ -73,6 +77,7 @@ export interface Config {
   celPriceWithTaxField?: string;
   celFeedDropFields: string[];
   facebook: { enabled: boolean; shopName: string; shopUrl: string; currency: string };
+  bapp: { url?: string; codePrefix: string };
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -134,6 +139,7 @@ export function loadConfig(env: Env): Config {
         : undefined,
     celPriceWithTaxField: opt(env.CEL_PRICE_WITH_TAX_FIELD),
     celFeedDropFields: (env.CEL_FEED_DROP_FIELDS ?? '').split(',').map((x) => x.trim()).filter(Boolean),
+    bapp: { url: opt(env.BAPP_FEED_URL), codePrefix: env.BAPP_CODE_PREFIX ?? 'BR-' },
     facebook: {
       enabled: bool(env.FB_FEED_ENABLED, false),
       shopName: opt(env.FB_SHOP_NAME) ?? 'Magazin',

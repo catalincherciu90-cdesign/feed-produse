@@ -3,6 +3,7 @@
  * JS-ul e servit separat la /admin/app.js (CSP fără 'unsafe-inline' pentru scripturi).
  * Toate datele din feed sunt puse în pagină doar prin textContent (fără innerHTML).
  */
+import { buildImportTable, buildXlsx, translateValue } from './bapp';
 
 export const ADMIN_HTML = String.raw`<!doctype html>
 <html lang="ro">
@@ -130,6 +131,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <button data-tab="products">Produse</button>
         <button data-tab="settings">Setări</button>
         <button data-tab="overrides">Excepții</button>
+        <button data-tab="tech">Date tehnice</button>
       </nav>
       <div class="spacer"></div>
       <button class="btn primary" id="sync" title="Citește feed-ul acum și actualizează CEL și clienții">Sincronizează acum</button>
@@ -198,6 +200,26 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
     </section>
     <section id="tab-settings" class="hidden"></section>
     <section id="tab-overrides" class="hidden"></section>
+    <section id="tab-tech" class="hidden">
+      <div class="card">
+        <h2>Date tehnice și poze de la producător</h2>
+        <p id="tech-info" class="muted small">Se încarcă…</p>
+        <label for="tech-codes">Codurile produselor (unul pe rând sau separate prin virgulă / spațiu)</label>
+        <textarea id="tech-codes" rows="6" placeholder="BR-BH07-04101&#10;BR-BA13-60920"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn" type="button" id="tech-preview">Verifică codurile</button>
+          <button class="btn primary" type="button" id="tech-download">Descarcă fișierul de import (.xlsx)</button>
+          <button class="link small" type="button" id="tech-all">Pune toate produsele legate</button>
+          <button class="link small" type="button" id="tech-clear">Golește</button>
+        </div>
+        <p class="help">Fișierul conține doar codul, coloanele tehnice cu valori și pozele (ProductImage + AddImages). Câmpurile care nu sunt în fișier (preț, stoc, descriere) nu se schimbă la import.</p>
+        <div id="tech-result" style="margin-top:12px"></div>
+      </div>
+      <details class="card" id="tech-mapping-box">
+        <summary><strong>Mapare atribute → coloane Teamshare și traduceri</strong></summary>
+        <div id="tech-mapping" style="margin-top:12px"></div>
+      </details>
+    </section>
   </main>
 </div>
 
@@ -237,7 +259,16 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 </body>
 </html>`;
 
-export const ADMIN_JS = String.raw`(function () {
+export const ADMIN_JS =
+  // Funcțiile pentru fișierul de import (din bapp.ts), injectate ca expresii: numele interne nu contează.
+  // wrangler (esbuild cu keepNames) poate adăuga apeluri __name(fn, "nume") în funcții: le neutralizăm.
+  'var __name = typeof __name === "function" ? __name : function (f) { return f; };\n' +
+  'var BAPP = {\n' +
+  '  translateValue: (' + translateValue.toString() + '),\n' +
+  '  buildImportTable: (' + buildImportTable.toString() + '),\n' +
+  '  buildXlsx: (' + buildXlsx.toString() + ')\n' +
+  '};\n' +
+  String.raw`(function () {
 'use strict';
 
 var TOKEN_KEY = 'feed-admin-token';
@@ -280,7 +311,7 @@ function el(tag, attrs, children) {
 function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
 function fmtNum(n) { return n === null || n === undefined ? '-' : Number(n).toLocaleString('ro-RO'); }
 function fmtPrice(n) { return n === null || n === undefined ? '-' : Number(n).toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function fmtTime(s) { if (!s) return '-'; var d = new Date(s); return d.toLocaleString('ro-RO', { dateStyle: 'medium', timeStyle: 'short' }); }
+function fmtTime(s) { if (!s) return '-'; var d = new Date(s); if (isNaN(d.getTime())) return String(s); return d.toLocaleString('ro-RO', { dateStyle: 'medium', timeStyle: 'short' }); }
 function ago(s) {
   if (!s) return '';
   var m = Math.round((Date.now() - new Date(s).getTime()) / 60000);
@@ -379,6 +410,7 @@ function load(fromLogin) {
     if (fromLogin) store(false, state.token);
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
     renderStatus(); renderSettings(); renderOverrides();
+    if (!$('tab-tech').classList.contains('hidden')) loadTech(true);
     return loadProducts(0);
   }).catch(function (e) {
     if (e.status === 401) { store(false, ''); showLogin(fromLogin ? 'Token greșit' : ''); }
@@ -433,7 +465,8 @@ function showTab(name) {
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
     if (b.getAttribute('data-tab') === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  ['status', 'products', 'settings', 'overrides'].forEach(function (t) { $('tab-' + t).classList.toggle('hidden', t !== name); });
+  ['status', 'products', 'settings', 'overrides', 'tech'].forEach(function (t) { $('tab-' + t).classList.toggle('hidden', t !== name); });
+  if (name === 'tech') loadTech();
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
 }
 
@@ -854,9 +887,174 @@ function confirmDelete(sku) {
   return false;
 }
 
+// ---------- Date tehnice (producător) ----------
+var tech = { data: null, mapping: null, meta: null, loading: null };
+function techCodes() {
+  return $('tech-codes').value.split(/[\s,;]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+}
+function loadTech(force) {
+  if (!state.token) return Promise.resolve(); // se reia după logare
+  if (tech.loading && !force) return tech.loading;
+  if (tech.data && tech.mapping && !force) return Promise.resolve();
+  $('tech-info').textContent = 'Se încarcă datele producătorului (~3 MB)…';
+  tech.loading = Promise.all([
+    api('GET', 'bapp-mapping'),
+    api('GET', 'bapp').catch(function (e) { if (e.status === 404) return null; throw e; })
+  ]).then(function (res) {
+    tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[1];
+    renderTechInfo(); renderMapping();
+  }).catch(function (e) {
+    $('tech-info').textContent = 'Eroare: ' + e.message;
+  }).then(function () { tech.loading = null; });
+  return tech.loading;
+}
+function renderTechInfo() {
+  var d = tech.data;
+  if (!d) {
+    $('tech-info').textContent = 'Nu există încă date de la producător. Pune secretul BAPP_FEED_URL în GitHub și apasă „Sincronizează acum”.';
+    return;
+  }
+  $('tech-info').textContent = fmtNum(Object.keys(d.products).length) + ' produse de la producător (' + d.source + '), ' +
+    fmtNum(Object.keys(d.index).length) + ' legate de codurile tale (' + fmtNum(d.matched.byCode) + ' după cod, ' +
+    fmtNum(d.matched.byEan) + ' după EAN) · date din ' + fmtTime(d.generatedAt);
+}
+function techTable() {
+  return BAPP.buildImportTable(techCodes(), tech.data, tech.mapping, BAPP.translateValue, tech.meta.columns);
+}
+$('tech-clear').addEventListener('click', function () { $('tech-codes').value = ''; clear($('tech-result')); });
+$('tech-all').addEventListener('click', function () {
+  loadTech().then(function () {
+    if (!tech.data) return;
+    $('tech-codes').value = Object.keys(tech.data.index).sort().join('\n');
+    toast(fmtNum(Object.keys(tech.data.index).length) + ' coduri adăugate');
+  });
+});
+$('tech-preview').addEventListener('click', function () {
+  loadTech().then(function () {
+    if (!tech.data) return toast('Nu există date de la producător.');
+    var codes = techCodes();
+    if (!codes.length) return toast('Pune cel puțin un cod.');
+    var t = techTable(); var root = $('tech-result'); clear(root);
+    root.appendChild(el('p', { class: 'small' }, [
+      badge([fmtNum(t.perProduct.length) + ' găsite', 'b-ok']), ' ',
+      t.missing.length ? badge([fmtNum(t.missing.length) + ' negăsite', 'b-warn']) : null, ' ',
+      el('span', { class: 'muted', text: fmtNum(t.rows[0].length) + ' coloane în fișier' })
+    ]));
+    if (t.missing.length) root.appendChild(el('div', { class: 'alert warn', text: 'Negăsite la producător: ' + t.missing.slice(0, 50).join(', ') + (t.missing.length > 50 ? ' …' : '') }));
+    var tb = el('tbody');
+    t.perProduct.slice(0, 200).forEach(function (p) {
+      var prod = tech.data.products[p.supplierCode]; var img = prod && prod.p && prod.p[0];
+      tb.appendChild(el('tr', null, [
+        el('td', { class: 'thumb-cell', 'data-label': 'Poză' }, [img ? el('a', { href: img, target: '_blank', rel: 'noopener noreferrer' }, [el('img', { class: 'thumb', loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', src: img })]) : missingBox('fără poză')]),
+        el('td', { class: 'code', 'data-label': 'Cod', text: p.code }),
+        el('td', { class: 'code small', 'data-label': 'Cod producător', text: p.supplierCode }),
+        el('td', { 'data-label': 'Nume', text: (prod && prod.n) || '' }),
+        el('td', { class: 'num', 'data-label': 'Valori', text: fmtNum(p.values) }),
+        el('td', { class: 'num', 'data-label': 'Poze', text: fmtNum(p.photos) })
+      ]));
+    });
+    root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
+      el('thead', null, [el('tr', null, [el('th', { text: 'Poză' }), el('th', { text: 'Cod' }), el('th', { text: 'Cod producător' }), el('th', { text: 'Nume' }), el('th', { class: 'num', text: 'Valori tehnice' }), el('th', { class: 'num', text: 'Poze' })])]),
+      tb
+    ])]));
+    if (t.perProduct.length > 200) root.appendChild(el('p', { class: 'small muted', text: 'Afișez primele 200. Fișierul le conține pe toate.' }));
+  });
+});
+$('tech-download').addEventListener('click', function () {
+  loadTech().then(function () {
+    if (!tech.data) return toast('Nu există date de la producător.');
+    if (!techCodes().length) return toast('Pune cel puțin un cod.');
+    var t = techTable();
+    if (!t.perProduct.length) return toast('Niciun cod nu a fost găsit la producător.');
+    var bytes = BAPP.buildXlsx(t.rows, 'Content');
+    var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var d = new Date(); var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    var a = el('a', { href: URL.createObjectURL(blob), download: 'import-date-tehnice-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.xlsx' });
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast('Fișier generat: ' + fmtNum(t.perProduct.length) + ' produse' + (t.missing.length ? ', ' + fmtNum(t.missing.length) + ' negăsite' : ''));
+  });
+});
+
+function renderMapping() {
+  var root = $('tech-mapping'); clear(root);
+  var m = tech.mapping, meta = tech.meta, d = tech.data;
+  var attrs = (d && d.attributes) || {};
+  var slugs = Object.keys(m.rules);
+  Object.keys(attrs).forEach(function (s) { if (slugs.indexOf(s) < 0) slugs.push(s); });
+  slugs.sort(function (a, b) { return ((attrs[b] && attrs[b].count) || 0) - ((attrs[a] && attrs[a].count) || 0); });
+  var dl = el('datalist', { id: 'tech-cols' });
+  meta.columns.forEach(function (c) { dl.appendChild(el('option', { value: c })); });
+  root.appendChild(dl);
+  root.appendChild(el('p', { class: 'small muted', text: 'Alege coloana Teamshare pentru fiecare atribut (gol = nu se exportă). Unitatea se adaugă doar la valorile care sunt numai număr (ex. 16 → 16 w). „De verificat” = atribute pentru care șablonul are mai multe coloane cu același nume.' }));
+  var tb = el('tbody');
+  slugs.forEach(function (slug) {
+    var rule = m.rules[slug] || { column: '' };
+    var info = attrs[slug];
+    tb.appendChild(el('tr', { 'data-slug': slug }, [
+      el('td', { class: 'code small', 'data-label': 'Atribut', text: slug }),
+      el('td', { 'data-label': 'Denumire', text: info ? info.title : '-' }),
+      el('td', { class: 'num', 'data-label': 'Produse', text: info ? fmtNum(info.count) : '0' }),
+      el('td', { 'data-label': 'Coloană' }, [
+        el('input', { class: 'map-col', list: 'tech-cols', value: rule.column || '', placeholder: '(nu se exportă)' }),
+        meta.uncertain.indexOf(slug) >= 0 ? el('span', { class: 'badge b-warn', style: 'margin-top:4px', text: 'de verificat' }) : null
+      ]),
+      el('td', { 'data-label': 'Unitate' }, [el('input', { class: 'map-unit', value: rule.unit || '', maxlength: '12', style: 'max-width:90px' })])
+    ]));
+  });
+  root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
+    el('thead', null, [el('tr', null, [el('th', { text: 'Atribut' }), el('th', { text: 'Denumire la producător' }), el('th', { class: 'num', text: 'Produse' }), el('th', { text: 'Coloană Teamshare' }), el('th', { text: 'Unitate' })])]),
+    tb
+  ])]));
+  var tr = Object.keys(m.translations).map(function (k) { return k + ' = ' + m.translations[k]; }).join('\n');
+  var trBox = el('textarea', { id: 'map-tr', rows: '10', spellcheck: 'false' }); trBox.value = tr;
+  var tChk = el('input', { type: 'checkbox', id: 'map-translate', style: 'width:auto' }); tChk.checked = m.translate !== false;
+  root.appendChild(el('div', { class: 'form-grid', style: 'margin-top:16px' }, [
+    el('div', null, [el('label', { for: 'map-tr', text: 'Traduceri (o regulă pe rând: englez = română)' }), trBox,
+      el('div', { class: 'help', text: 'Întâi se caută valoarea întreagă (ex. „Black-Golden”), apoi se înlocuiesc cuvintele (Black → Negru). Cele mai lungi expresii au prioritate.' })]),
+    el('div', null, [
+      el('label', null, [tChk, ' Traduce valorile în română']),
+      el('label', { for: 'map-sep', style: 'margin-top:12px', text: 'Separator pentru pozele din AddImages' }),
+      el('input', { id: 'map-sep', value: m.imageSeparator, maxlength: '5', style: 'max-width:90px' }),
+      el('label', { for: 'map-prefix', style: 'margin-top:12px', text: 'Prefixul codurilor tale față de codurile producătorului' }),
+      el('input', { id: 'map-prefix', value: m.codePrefix, maxlength: '20', style: 'max-width:140px' }),
+      el('div', { class: 'help', text: 'Ex.: BR- (codul tău BR-BG38-12581 = codul Braytron BG38-12581).' })
+    ])
+  ]));
+  root.appendChild(el('div', { class: 'row', style: 'margin-top:14px' }, [
+    el('button', { class: 'btn primary', type: 'button', text: 'Salvează maparea', onclick: saveMapping }),
+    el('button', { class: 'btn danger', type: 'button', text: 'Revino la maparea propusă', onclick: resetMapping }),
+    el('span', { class: 'small muted' }, ['Sursa: ', badge([meta.saved ? 'salvată de tine' : 'propusă', meta.saved ? 'b-info' : 'b-muted'])])
+  ]));
+}
+function collectMapping() {
+  var rules = {};
+  Array.prototype.forEach.call(document.querySelectorAll('#tech-mapping tr[data-slug]'), function (tr) {
+    var col = tr.querySelector('.map-col').value.trim(); var unit = tr.querySelector('.map-unit').value;
+    rules[tr.getAttribute('data-slug')] = unit ? { column: col, unit: unit } : { column: col };
+  });
+  var translations = {};
+  $('map-tr').value.split('\n').forEach(function (line) {
+    var i = line.indexOf('=');
+    if (i <= 0) return;
+    var k = line.slice(0, i).trim(); var v = line.slice(i + 1).trim();
+    if (k) translations[k] = v;
+  });
+  return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim() };
+}
+function saveMapping() {
+  api('PUT', 'bapp-mapping', collectMapping()).then(function (res) {
+    tech.mapping = res.mapping; tech.meta.saved = true; renderMapping(); toast('Maparea a fost salvată.');
+  }).catch(function (e) { toast('Eroare: ' + e.message); });
+}
+function resetMapping() {
+  api('DELETE', 'bapp-mapping').then(function () {
+    tech.mapping = tech.meta.defaults; tech.meta.saved = false; renderMapping(); toast('Revenit la maparea propusă.');
+  }).catch(function (e) { toast('Eroare: ' + e.message); });
+}
+
 // ---------- start ----------
 var initial = (location.hash || '').replace('#', '');
-if (['status', 'products', 'settings', 'overrides'].indexOf(initial) >= 0) showTab(initial);
+if (['status', 'products', 'settings', 'overrides', 'tech'].indexOf(initial) >= 0) showTab(initial);
 state.token = store(true);
 if (state.token) load(false).catch(function () {}); else showLogin();
 })();

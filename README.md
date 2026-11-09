@@ -78,6 +78,27 @@ Format RSS cu câmpuri `g:` (formatul Google Merchant, acceptat de Meta). Pentru
 
 Setări în workflow: `FB_FEED_ENABLED`, `FB_SHOP_NAME`, `FB_SHOP_URL`, `FB_CURRENCY`.
 
+## Date tehnice și poze de la producător (import în Teamshare)
+
+Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de import Teamshare (`ImportProducts.xlsx`, foaia „Content”), cu datele tehnice și pozele din feed-ul producătorului **Braytron** (bapp.ro).
+
+**Cum îl folosești**
+1. Pui codurile produselor (ex. `BR-BH07-04101`), unul pe rând sau separate prin virgulă. Merge și codul producătorului (`BH07-04101`); în fișier ajunge mereu codul tău.
+2. **Verifică codurile**: vezi ce s-a găsit, câte valori tehnice și câte poze are fiecare produs.
+3. **Descarcă fișierul de import** și îl imporți în Teamshare.
+
+**Ce conține fișierul:** `ProductCode`, doar coloanele tehnice care au valori la produsele alese și pozele: `ProductImage - P39360` (prima poză) și `AddImages - P39379` (restul, separate prin `#`). Prețul, stocul și descrierea nu sunt în fișier, deci nu se schimbă.
+
+**Legătura cu produsele tale:** codul tău = `BR-` + codul Braytron (1.927 de produse). Dacă nu se potrivește codul, se caută după EAN (încă 62). Restul produselor Braytron nu au corespondent în catalogul tău.
+
+**Maparea** (atribut Braytron → coloană Teamshare) e propusă automat după denumirile românești din feed și se editează din panou (secțiunea „Mapare atribute → coloane Teamshare și traduceri”). 10 atribute sunt marcate „de verificat”: șablonul are mai multe coloane cu același nume (ex. `Material:` apare de 3 ori), iar alegerea mea s-a bazat pe eticheta afișată pe site. Coloanele pentru dimensiunile cutiei, categorie, EAN, iconițe, data apariției și video nu se exportă implicit.
+
+**Traducerile** (Black → Negru, 2 Years → 2 ani, Not-Dimmable → Nedimabil etc.) se editează din același loc. Valorile fără traducere rămân ca la producător.
+
+**Setare:** secretul GitHub `BAPP_FEED_URL` (linkul feed-ului de atribute, cu `lang=ro`). Feed-ul se descarcă la fiecare „Sincronizează acum”; în Cloudflare se scrie doar dacă datele s-au schimbat.
+
+**De verificat la primul import (cu 1-2 produse):** că Teamshare acceptă pozele ca linkuri externe în format `.webp` de pe `cdn.braytron.center`, că separatorul `#` e cel corect pentru `AddImages` și că celulele goale nu șterg valori existente.
+
 ## Feed-ul pentru clienți
 
 URL: `https://feed-produse.<contul-tau>.workers.dev/feed.xml`

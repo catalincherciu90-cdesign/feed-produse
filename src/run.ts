@@ -22,6 +22,7 @@ async function main(): Promise<void> {
     `Produse: ${s?.products ?? '-'} | disponibile: ${s?.available ?? '-'} | indisponibile: ${s?.unavailable ?? '-'}`,
     `Feed CEL (/cel.xml): ${status.celFeed ? `${status.celFeed.products} produse, ${status.celFeed.orderable} comandabile, ${status.celFeed.blockedNoPrice} blocate fără preț, ${(status.celFeed.bytes / 1e6).toFixed(1)} MB` : 'negenerat'}`,
     `Catalog Facebook (/facebook.xml): ${status.facebookFeed ? `${status.facebookFeed.included} produse, ${status.facebookFeed.inStock} în stoc; excluse: ${status.facebookFeed.skipped.noPrice} fără preț, ${status.facebookFeed.skipped.noLink} fără link, ${status.facebookFeed.skipped.noImage} fără poză` : 'oprit'}`,
+    `Date tehnice producător: ${status.bapp ? (status.bapp.error ? 'EROARE ' + status.bapp.error : `${status.bapp.products} produse, ${status.bapp.linked} legate de codurile tale (${status.bapp.byCode} după cod, ${status.bapp.byEan} după EAN)${status.bapp.changed ? ', actualizate' : ', neschimbate'}`) : 'oprit'}`,
     `API CEL: ${c?.skipped ?? `mod ${c?.mode}, trimise ${c?.sent ?? 0}, actualizate ${c?.updated ?? 0}, respinse ${c?.badList?.length ?? 0}`}`,
   ];
   if (c?.badList?.length) lines.push(`Respinse de CEL (primele): ${JSON.stringify(c.badList.slice(0, 10))}`);
