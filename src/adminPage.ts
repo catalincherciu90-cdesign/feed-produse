@@ -1138,12 +1138,12 @@ $('tech-preview').addEventListener('click', function () {
     ]));
     if (t.missing.length) root.appendChild(el('div', { class: 'alert warn', text: 'Negăsite la producător: ' + t.missing.slice(0, 50).join(', ') + (t.missing.length > 50 ? ' …' : '') }));
     if ((tech.mapping.categoryMode || 'new') !== 'off') {
-      var bulk = el('input', { id: 'tech-bulk-cat', list: 'site-cats', placeholder: 'categorie pentru toate produsele noi', style: 'max-width:420px' });
+      var bulk = categorySelect('', '— alege categoria pentru toate produsele noi —', { id: 'tech-bulk-cat', style: 'max-width:420px' });
       var newOnes = t.perProduct.filter(function (p) { return !p.existing; });
       root.appendChild(el('div', { class: 'row', style: 'margin:6px 0 10px' }, [
         bulk,
         el('button', { class: 'btn', type: 'button', text: 'Pune la toate produsele noi (' + fmtNum(newOnes.length) + ')', onclick: function () {
-          var v = bulk.value.trim(); if (!v) return toast('Scrie sau alege o categorie.');
+          var v = bulk.value.trim(); if (!v) return toast('Alege o categorie din listă.');
           newOnes.forEach(function (p) { tech.productCategories[p.code] = v; });
           tech.catDirty = true; $('tech-preview').click();
         } }),
@@ -1189,6 +1189,33 @@ $('tech-download').addEventListener('click', function () {
   });
 });
 
+/**
+ * Listă de selecție cu categoriile site-ului (din feed-ul Teamshare), grupate după primul nivel,
+ * cu calea completă afișată (ex. „Iluminat exterior › Corp LED Hibay”).
+ * firstLabel = textul opțiunii goale (ex. „Propusă: …”). O valoare care nu mai e pe site rămâne vizibilă.
+ */
+function categorySelect(value, firstLabel, attrs) {
+  var cats = (tech.data && tech.data.siteCategories) || [];
+  var sel = el('select', attrs || {});
+  sel.appendChild(el('option', { value: '', text: firstLabel }));
+  if (value && cats.indexOf(value) < 0) sel.appendChild(el('option', { value: value, text: value + ' (nu există pe site)' }));
+  var groups = {}; var order = [];
+  cats.forEach(function (c) {
+    var top = c.split('/')[0];
+    if (!groups[top]) { groups[top] = []; order.push(top); }
+    groups[top].push(c);
+  });
+  order.forEach(function (top) {
+    var g = el('optgroup', { label: top });
+    groups[top].forEach(function (c) {
+      g.appendChild(el('option', { value: c, text: c.replace(/\//g, ' › ') }));
+    });
+    sel.appendChild(g);
+  });
+  sel.value = value || '';
+  return sel;
+}
+
 function categoryInput(p) {
   var mode = tech.mapping.categoryMode || 'new';
   var box = el('div', { class: 'small' });
@@ -1196,7 +1223,9 @@ function categoryInput(p) {
   var chosen = (tech.productCategories || {})[p.code] || '';
   var proposed = proposedCategory(p.family);
   var placeholder = p.existing && mode === 'new' ? 'rămâne cea actuală' : (proposed || 'alege categoria');
-  var input = el('input', { class: 'prod-cat', list: 'site-cats', value: chosen, placeholder: placeholder, style: 'min-width:220px' });
+  var first = p.existing && mode === 'new' ? 'Rămâne cea actuală' : (proposed ? 'Propusă: ' + proposed : '— alege categoria —');
+  var input = categorySelect(chosen, first, { class: 'prod-cat', style: 'min-width:240px;max-width:340px' });
+  void placeholder;
   input.addEventListener('change', function () {
     var v = input.value.trim();
     if (v) tech.productCategories[p.code] = v; else delete tech.productCategories[p.code];
@@ -1238,7 +1267,7 @@ function renderCategories(root) {
   root.appendChild(el('div', null, [el('label', { for: 'map-catmode', text: 'Când se pune categoria în fișier și în feed' }), mode]));
   if (!fams.length) { root.appendChild(el('p', { class: 'small muted', text: 'Corespondența apare după prima sincronizare cu versiunea nouă.' })); return; }
   var none = fams.filter(function (f) { return !cats[f].category && !(m.categories || {})[f]; }).length;
-  root.appendChild(el('p', { class: 'small muted', text: 'Categoria propusă e cea mai des folosită pe site la produsele tale din aceeași familie Braytron (procentul arată cât de des). Scrie o altă categorie ca s-o înlocuiești; gol = cea propusă. ' + (none ? fmtNum(none) + ' familii nu au categorie propusă (doar produse noi): alege-le tu.' : '') }));
+  root.appendChild(el('p', { class: 'small muted', text: 'Categoria propusă e cea mai des folosită pe site la produsele tale din aceeași familie Braytron (procentul arată cât de des). Alege din listă altă categorie ca s-o înlocuiești; „Propusă” = cea propusă. Lista conține categoriile site-ului care au cel puțin un produs. ' + (none ? fmtNum(none) + ' familii nu au categorie propusă (doar produse noi): alege-le tu.' : '') }));
   var dl = el('datalist', { id: 'site-cats' });
   ((d && d.siteCategories) || []).forEach(function (c) { dl.appendChild(el('option', { value: c })); });
   root.appendChild(dl);
@@ -1249,7 +1278,7 @@ function renderCategories(root) {
       el('td', { 'data-label': 'Familie Braytron', text: f }),
       el('td', { class: 'num', 'data-label': 'Produse', text: fmtNum(c.total) + (c.total > c.linked ? ' (' + fmtNum(c.total - c.linked) + ' noi)' : '') }),
       el('td', { 'data-label': 'Propusă' }, [c.category ? el('div', null, [document.createTextNode(c.category + ' '), badge([c.share + '%', c.share >= 90 ? 'b-ok' : 'b-warn'])]) : badge(['fără', 'b-warn'])]),
-      el('td', { 'data-label': 'Categoria ta' }, [el('input', { class: 'map-cat', list: 'site-cats', value: own, placeholder: c.category || 'alege categoria' })])
+      el('td', { 'data-label': 'Categoria ta' }, [categorySelect(own, c.category ? 'Propusă: ' + c.category : '— alege categoria —', { class: 'map-cat', style: 'max-width:340px' })])
     ]));
   });
   root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
