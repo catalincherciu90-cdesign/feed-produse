@@ -991,11 +991,12 @@ $('tech-preview').addEventListener('click', function () {
         el('td', { class: 'code small', 'data-label': 'Cod producător', text: p.supplierCode }),
         el('td', { 'data-label': 'Nume', text: (prod && prod.n) || '' }),
         el('td', { class: 'num', 'data-label': 'Valori', text: fmtNum(p.values) }),
-        el('td', { class: 'num', 'data-label': 'Poze', text: fmtNum(p.photos) })
+        el('td', { class: 'num', 'data-label': 'Poze', text: fmtNum(p.photos) }),
+        el('td', { 'data-label': 'Categorie' }, [categoryInfo(p)])
       ]));
     });
     root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
-      el('thead', null, [el('tr', null, [el('th', { text: 'Poză' }), el('th', { text: 'Cod' }), el('th', { text: 'Cod producător' }), el('th', { text: 'Nume' }), el('th', { class: 'num', text: 'Valori tehnice' }), el('th', { class: 'num', text: 'Poze' })])]),
+      el('thead', null, [el('tr', null, [el('th', { text: 'Poză' }), el('th', { text: 'Cod' }), el('th', { text: 'Cod producător' }), el('th', { text: 'Nume' }), el('th', { class: 'num', text: 'Valori tehnice' }), el('th', { class: 'num', text: 'Poze' }), el('th', { text: 'Categorie' })])]),
       tb
     ])]));
     if (t.perProduct.length > 200) root.appendChild(el('p', { class: 'small muted', text: 'Afișez primele 200. Fișierul le conține pe toate.' }));
@@ -1015,6 +1016,52 @@ $('tech-download').addEventListener('click', function () {
     toast('Fișier generat: ' + fmtNum(t.perProduct.length) + ' produse' + (t.missing.length ? ', ' + fmtNum(t.missing.length) + ' negăsite' : ''));
   });
 });
+
+function categoryInfo(p) {
+  var mode = tech.mapping.categoryMode || 'new';
+  var box = el('div', { class: 'small' });
+  if (p.category) box.appendChild(document.createTextNode(p.category));
+  else if (mode === 'off') box.appendChild(badge(['nu se exportă', 'b-muted']));
+  else if (p.existing && mode === 'new') box.appendChild(badge(['rămâne cea actuală', 'b-muted']));
+  else box.appendChild(badge(['fără categorie: alege-o la Mapare', 'b-warn']));
+  if (!p.existing) box.appendChild(el('div', null, [badge(['produs nou', 'b-info'])]));
+  if (p.family) box.appendChild(el('div', { class: 'muted', style: 'margin-top:2px', text: 'Braytron: ' + p.family }));
+  return box;
+}
+
+function renderCategories(root) {
+  var m = tech.mapping, d = tech.data;
+  var cats = (d && d.categories) || {};
+  var fams = Object.keys(cats).sort(function (a, b) { return cats[b].total - cats[a].total; });
+  root.appendChild(el('h3', { style: 'margin-top:20px', text: 'Categorii (familie Braytron → categoria de pe site)' }));
+  var mode = el('select', { id: 'map-catmode', style: 'max-width:420px' }, [
+    el('option', { value: 'new', text: 'Doar la produsele noi (recomandat): cele existente își păstrează categoria' }),
+    el('option', { value: 'all', text: 'La toate produsele: suprascrie și categoria celor existente' }),
+    el('option', { value: 'off', text: 'Nu exporta categoria' })
+  ]);
+  mode.value = m.categoryMode || 'new';
+  root.appendChild(el('div', null, [el('label', { for: 'map-catmode', text: 'Când se pune categoria în fișier și în feed' }), mode]));
+  if (!fams.length) { root.appendChild(el('p', { class: 'small muted', text: 'Corespondența apare după prima sincronizare cu versiunea nouă.' })); return; }
+  var none = fams.filter(function (f) { return !cats[f].category && !(m.categories || {})[f]; }).length;
+  root.appendChild(el('p', { class: 'small muted', text: 'Categoria propusă e cea mai des folosită pe site la produsele tale din aceeași familie Braytron (procentul arată cât de des). Scrie o altă categorie ca s-o înlocuiești; gol = cea propusă. ' + (none ? fmtNum(none) + ' familii nu au categorie propusă (doar produse noi): alege-le tu.' : '') }));
+  var dl = el('datalist', { id: 'site-cats' });
+  ((d && d.siteCategories) || []).forEach(function (c) { dl.appendChild(el('option', { value: c })); });
+  root.appendChild(dl);
+  var tb = el('tbody');
+  fams.forEach(function (f) {
+    var c = cats[f]; var own = (m.categories || {})[f] || '';
+    tb.appendChild(el('tr', { 'data-family': f }, [
+      el('td', { 'data-label': 'Familie Braytron', text: f }),
+      el('td', { class: 'num', 'data-label': 'Produse', text: fmtNum(c.total) + (c.total > c.linked ? ' (' + fmtNum(c.total - c.linked) + ' noi)' : '') }),
+      el('td', { 'data-label': 'Propusă' }, [c.category ? el('div', null, [document.createTextNode(c.category + ' '), badge([c.share + '%', c.share >= 90 ? 'b-ok' : 'b-warn'])]) : badge(['fără', 'b-warn'])]),
+      el('td', { 'data-label': 'Categoria ta' }, [el('input', { class: 'map-cat', list: 'site-cats', value: own, placeholder: c.category || 'alege categoria' })])
+    ]));
+  });
+  root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
+    el('thead', null, [el('tr', null, [el('th', { text: 'Familie Braytron' }), el('th', { class: 'num', text: 'Produse' }), el('th', { text: 'Categoria propusă' }), el('th', { text: 'Categoria ta' })])]),
+    tb
+  ])]));
+}
 
 function renderMapping() {
   var root = $('tech-mapping'); clear(root);
@@ -1061,6 +1108,7 @@ function renderMapping() {
       el('div', { class: 'help', text: 'Ex.: BR- (codul tău BR-BG38-12581 = codul Braytron BG38-12581).' })
     ])
   ]));
+  renderCategories(root);
   root.appendChild(el('div', { class: 'row', style: 'margin-top:14px' }, [
     el('button', { class: 'btn primary', type: 'button', text: 'Salvează maparea', onclick: saveMapping }),
     el('button', { class: 'btn danger', type: 'button', text: 'Revino la maparea propusă', onclick: resetMapping }),
@@ -1080,7 +1128,13 @@ function collectMapping() {
     var k = line.slice(0, i).trim(); var v = line.slice(i + 1).trim();
     if (k) translations[k] = v;
   });
-  return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim() };
+  var categories = {};
+  Array.prototype.forEach.call(document.querySelectorAll('#tech-mapping tr[data-family]'), function (tr) {
+    var v = tr.querySelector('.map-cat').value.trim();
+    if (v) categories[tr.getAttribute('data-family')] = v;
+  });
+  return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim(),
+    categoryMode: $('map-catmode') ? $('map-catmode').value : 'new', categories: categories };
 }
 function saveMapping() {
   api('PUT', 'bapp-mapping', collectMapping()).then(function (res) {

@@ -22,6 +22,20 @@ export interface BappData {
   products: Record<string, BappProduct>; // cheie: codul producătorului
   index: Record<string, string>; // codul tău (ex. BR-BG38-12581) -> codul producătorului
   matched: { byCode: number; byEan: number };
+  /**
+   * Corespondența familie producător -> categoria ta, învățată din produsele deja legate.
+   * Cheie: „Familie / Subfamilie” (ex. „Electrice / MCB”).
+   */
+  categories?: Record<string, { category: string; share: number; linked: number; total: number }>;
+  /** Toate categoriile de pe site (din feed-ul Teamshare), pentru alegere în panou. */
+  siteCategories?: string[];
+}
+
+/** Cheia de categorie a unui produs al producătorului: „Familie / Subfamilie”. */
+export function familyKey(a: Record<string, string>): string {
+  const main = (a.main_family || '').trim();
+  const sub = (a.sub_family || '').trim();
+  return main && sub ? main + ' / ' + sub : main || sub;
 }
 
 /** O regulă de mapare: atributul producătorului merge în coloana Teamshare, cu unitate opțională. */
@@ -36,6 +50,10 @@ export interface BappMapping {
   translations: Record<string, string>; // englez -> română (fraze sau cuvinte)
   imageSeparator: string; // separatorul pozelor din AddImages
   codePrefix: string; // prefixul codurilor tale față de codurile producătorului (ex. BR-)
+  /** new = categoria doar la produsele care nu sunt în catalog; all = la toate; off = niciodată */
+  categoryMode: 'new' | 'all' | 'off';
+  /** Corecturile tale: „Familie / Subfamilie” -> categoria de pe site (au prioritate față de cea învățată) */
+  categories: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -192,6 +210,8 @@ export function defaultMapping(): BappMapping {
     translations: { ...DEFAULT_TRANSLATIONS },
     imageSeparator: '#',
     codePrefix: 'BR-',
+    categoryMode: 'new',
+    categories: {},
   };
 }
 
@@ -228,21 +248,32 @@ export function translateValue(value: string, translations: Record<string, strin
  */
 export function buildImportTable(
   codes: string[],
-  data: { products: Record<string, { c: string; p: string[]; a: Record<string, string> }>; index: Record<string, string> },
+  data: {
+    products: Record<string, { c: string; p: string[]; a: Record<string, string> }>;
+    index: Record<string, string>;
+    categories?: Record<string, { category: string }>;
+  },
   mapping: {
     rules: Record<string, { column: string; unit?: string }>;
     translate: boolean;
     translations: Record<string, string>;
     imageSeparator: string;
     codePrefix: string;
+    categoryMode?: string;
+    categories?: Record<string, string>;
   },
   translateFn: (v: string, t: Record<string, string>) => string,
   columnOrder: readonly string[],
-): { rows: string[][]; missing: string[]; perProduct: { code: string; supplierCode: string; values: number; photos: number }[] } {
+): {
+  rows: string[][];
+  missing: string[];
+  perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string }[];
+} {
   const CODE = 'ProductCode';
   const IMG = 'ProductImage - P39360';
   const ADD = 'AddImages - P39379';
-  const found: { code: string; prod: { c: string; p: string[]; a: Record<string, string> } }[] = [];
+  const CAT = 'Category';
+  const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string> } }[] = [];
   const missing: string[] = [];
   const seen: Record<string, boolean> = {};
   const reverse: Record<string, string> = {};
@@ -262,13 +293,16 @@ export function buildImportTable(
       const own = data.index[code] ? code : reverse[key] || code;
       if (own !== code && seen[own]) continue;
       seen[own] = true;
-      found.push({ code: own, prod: data.products[key] });
+      found.push({ code: own, existing: !!data.index[own], prod: data.products[key] });
     } else missing.push(code);
   }
 
   const cells: Record<string, string>[] = [];
   const used: Record<string, boolean> = {};
-  const perProduct: { code: string; supplierCode: string; values: number; photos: number }[] = [];
+  const perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string }[] = [];
+  const mode = mapping.categoryMode || 'new';
+  const overrides = mapping.categories || {};
+  const learned = data.categories || {};
   for (const f of found) {
     const row: Record<string, string> = {};
     row[CODE] = f.code;
@@ -294,8 +328,22 @@ export function buildImportTable(
         used[ADD] = true;
       }
     }
+    // Categoria: corectura ta, altfel cea învățată din produsele existente
+    const fa = f.prod.a || {};
+    const main = String(fa.main_family || '').trim();
+    const subf = String(fa.sub_family || '').trim();
+    const family = main && subf ? main + ' / ' + subf : main || subf;
+    let category = '';
+    if (family) {
+      if (Object.prototype.hasOwnProperty.call(overrides, family)) category = String(overrides[family] || '').trim();
+      else if (learned[family]) category = learned[family].category;
+    }
+    if (category && (mode === 'all' || (mode === 'new' && !f.existing))) {
+      row[CAT] = category;
+      used[CAT] = true;
+    }
     cells.push(row);
-    perProduct.push({ code: f.code, supplierCode: f.prod.c, values: values, photos: photos.length });
+    perProduct.push({ code: f.code, supplierCode: f.prod.c, values: values, photos: photos.length, existing: f.existing, category: row[CAT] || '', family: family });
   }
 
   // ordinea coloanelor: ca în șablonul Teamshare
@@ -460,7 +508,20 @@ export function validateMapping(raw: unknown, columns: readonly string[]): BappM
 
   const sep = str(r.imageSeparator ?? '#', 5, 'Separatorul pozelor');
   if (!sep) throw new Error('Separatorul pozelor nu poate fi gol');
+  const mode = r.categoryMode === undefined ? 'new' : r.categoryMode;
+  if (mode !== 'new' && mode !== 'all' && mode !== 'off') throw new Error('categoryMode trebuie să fie new, all sau off');
+  const catIn = r.categories ?? {};
+  if (typeof catIn !== 'object' || catIn === null || Array.isArray(catIn)) throw new Error('categories invalid');
+  const catEntries = Object.entries(catIn as Record<string, unknown>);
+  if (catEntries.length > MAPPING_LIMITS.maxTranslations) throw new Error('Prea multe categorii');
+  const categories: Record<string, string> = {};
+  for (const [k, v] of catEntries) {
+    const key = str(k, MAPPING_LIMITS.maxText, 'Familie').trim();
+    if (key) categories[key] = str(v, MAPPING_LIMITS.maxText, `Categoria pentru „${key}”`).trim();
+  }
   return {
+    categoryMode: mode,
+    categories,
     rules,
     translate: r.translate !== false,
     translations,

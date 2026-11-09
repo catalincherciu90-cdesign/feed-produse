@@ -143,3 +143,50 @@ describe('feed /date-tehnice.xml', () => {
     expect(() => validateFeedCodes({ codes: ['x'.repeat(101)] })).toThrow(/lung/);
   });
 });
+
+describe('categorii', () => {
+  const X = (code: string, main: string, sub: string) => `<product><code>${code}</code><photos/><sections><section><categories><category><attributes>
+<attribute><slug>main_family</slug><title>F</title><value>${main}</value></attribute>
+<attribute><slug>sub_family</slug><title>S</title><value>${sub}</value></attribute>
+</attributes></category></categories></section></sections></product>`;
+  const xml = `<response><products>${X('A1', 'Electrice', 'MCB')}${X('A2', 'Electrice', 'MCB')}${X('A3', 'Electrice', 'MCB')}${X('N1', 'Electrice', 'MCB')}${X('N2', 'Altele', 'Nou')}</products></response>`;
+  const ours = [
+    { sku: 'BR-A1', category: 'Sigurante Automate' },
+    { sku: 'BR-A2', category: 'Sigurante Automate' },
+    { sku: 'BR-A3', category: 'Electrice/Altele' },
+  ];
+  const d = parseBapp(xml, ours, { codePrefix: 'BR-', source: 's', generatedAt: 'now' });
+
+  it('învață categoria majoritară din produsele legate', () => {
+    expect(d.categories!['Electrice / MCB']).toEqual({ category: 'Sigurante Automate', share: 66.7, linked: 3, total: 4 });
+    expect(d.categories!['Altele / Nou']).toEqual({ category: '', share: 0, linked: 0, total: 1 });
+    expect(d.siteCategories).toEqual(['Electrice/Altele', 'Sigurante Automate']);
+  });
+
+  it('implicit: categoria doar la produsele noi; existentele o păstrează', () => {
+    const t = buildImportTable(['BR-A3', 'N1', 'N2'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    const h = t.rows[0];
+    expect(h).toContain('Category');
+    const cat = (code: string) => t.rows.find((r) => r[0] === code)![h.indexOf('Category')];
+    expect(cat('BR-A3')).toBe(''); // existent: nu se schimbă
+    expect(cat('N1')).toBe('Sigurante Automate'); // nou: categoria învățată
+    expect(cat('N2')).toBe(''); // nou, fără corespondență
+    expect(t.perProduct.find((p) => p.code === 'N1')).toMatchObject({ existing: false, family: 'Electrice / MCB' });
+  });
+
+  it('corecturile tale au prioritate; modurile all și off', () => {
+    const m = { ...defaultMapping(), categories: { 'Altele / Nou': 'Diverse' } };
+    const t = buildImportTable(['N2'], d, m, translateValue, TEAMSHARE_COLUMNS);
+    expect(t.rows[1][t.rows[0].indexOf('Category')]).toBe('Diverse');
+    const all = buildImportTable(['BR-A3'], d, { ...defaultMapping(), categoryMode: 'all' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(all.rows[1][all.rows[0].indexOf('Category')]).toBe('Sigurante Automate');
+    const off = buildImportTable(['N1'], d, { ...defaultMapping(), categoryMode: 'off' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(off.rows[0]).not.toContain('Category');
+  });
+
+  it('validează modul și categoriile', () => {
+    expect(validateMapping({ ...defaultMapping(), categories: { 'A / B': ' X ' } }, TEAMSHARE_COLUMNS).categories).toEqual({ 'A / B': 'X' });
+    expect(() => validateMapping({ ...defaultMapping(), categoryMode: 'mereu' }, TEAMSHARE_COLUMNS)).toThrow(/categoryMode/);
+    expect(validateMapping({ rules: {}, imageSeparator: '#' }, TEAMSHARE_COLUMNS).categoryMode).toBe('new'); // mapare salvată înainte de categorii
+  });
+});

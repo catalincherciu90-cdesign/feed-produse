@@ -3,7 +3,7 @@
  * folosește parserul XML, care nu trebuie să ajungă în Worker.
  */
 import { XMLParser } from 'fast-xml-parser';
-import type { BappData } from './bapp';
+import { familyKey, type BappData } from './bapp';
 
 // ---------------------------------------------------------------------------------------------
 // Citirea feed-ului (GitHub Actions)
@@ -26,7 +26,7 @@ function txt(v: unknown): string {
  */
 export function parseBapp(
   xml: string,
-  ours: { sku: string; ean?: string }[],
+  ours: { sku: string; ean?: string; category?: string }[],
   opts: { codePrefix: string; source: string; generatedAt: string },
 ): BappData {
   const parser = new XMLParser({
@@ -92,7 +92,36 @@ export function parseBapp(
       byEanCount++;
     }
   }
+  // Corespondența familie -> categoria ta, din produsele deja legate (categoria majoritară).
+  const ourCat = new Map(ours.map((o) => [o.sku, (o.category || '').trim()]));
+  const votes: Record<string, Record<string, number>> = {};
+  const totals: Record<string, number> = {};
+  for (const pr of Object.values(products)) {
+    const fam = familyKey(pr.a);
+    if (fam) totals[fam] = (totals[fam] || 0) + 1;
+  }
+  for (const [own, sup] of Object.entries(index)) {
+    const fam = familyKey(products[sup].a);
+    const cat = ourCat.get(own);
+    if (!fam || !cat) continue;
+    (votes[fam] ??= {})[cat] = (votes[fam][cat] || 0) + 1;
+  }
+  const categories: NonNullable<BappData['categories']> = {};
+  for (const [fam, total] of Object.entries(totals)) {
+    const v = votes[fam];
+    if (!v) {
+      categories[fam] = { category: '', share: 0, linked: 0, total };
+      continue;
+    }
+    const linked = Object.values(v).reduce((a, b) => a + b, 0);
+    const [best, n] = Object.entries(v).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    categories[fam] = { category: best, share: Math.round((n / linked) * 1000) / 10, linked, total };
+  }
+  const siteCategories = [...new Set(ours.map((o) => (o.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ro'));
+
   return {
+    categories,
+    siteCategories,
     generatedAt: opts.generatedAt,
     source: opts.source,
     attributes,
