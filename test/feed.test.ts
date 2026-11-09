@@ -430,6 +430,7 @@ describe('runSync: feed cu date tehnice', () => {
   it('generează /date-tehnice.xml doar pentru codurile salvate, cu maparea salvată', async () => {
     const kv = new MemKV();
     kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify(['0012', 'LIPSA']));
+    kv.store.set(KV_KEYS.bappProductCategories, JSON.stringify({ '0012': 'Categoria mea' }));
     vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
     const s = await runSync(loadConfig({ ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '' } as Env), kv);
     expect(s.ok).toBe(true);
@@ -438,6 +439,7 @@ describe('runSync: feed cu date tehnice', () => {
     expect(xml).toContain('<Product_Code><![CDATA[ProductCode]]></Product_Code>'); // rândul de titluri
     expect(xml).toContain('<Product_Code><![CDATA[0012]]></Product_Code>');
     expect(xml).toContain('<Culoarea_corpului_P39493><![CDATA[Alb]]></Culoarea_corpului_P39493>');
+    expect(xml).toContain('<Category><![CDATA[Categoria mea]]></Category>'); // categoria aleasă pe produs
     expect(s.warnings?.join(' ')).toMatch(/1 coduri negăsite/);
     vi.unstubAllGlobals();
   });

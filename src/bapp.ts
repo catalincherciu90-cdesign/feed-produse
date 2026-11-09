@@ -261,6 +261,8 @@ export function buildImportTable(
     codePrefix: string;
     categoryMode?: string;
     categories?: Record<string, string>;
+    /** Categoria aleasă de tine pentru un produs anume (cod -> categorie): prioritate maximă. */
+    productCategories?: Record<string, string>;
   },
   translateFn: (v: string, t: Record<string, string>) => string,
   columnOrder: readonly string[],
@@ -334,11 +336,16 @@ export function buildImportTable(
     const subf = String(fa.sub_family || '').trim();
     const family = main && subf ? main + ' / ' + subf : main || subf;
     let category = '';
-    if (family) {
+    const perCode = mapping.productCategories || {};
+    const chosen = Object.prototype.hasOwnProperty.call(perCode, f.code) ? String(perCode[f.code] || '').trim() : '';
+    if (chosen && mode !== 'off') {
+      row[CAT] = chosen;
+      used[CAT] = true;
+    } else if (family) {
       if (Object.prototype.hasOwnProperty.call(overrides, family)) category = String(overrides[family] || '').trim();
       else if (learned[family]) category = learned[family].category;
     }
-    if (category && (mode === 'all' || (mode === 'new' && !f.existing))) {
+    if (!chosen && category && (mode === 'all' || (mode === 'new' && !f.existing))) {
       row[CAT] = category;
       used[CAT] = true;
     }
@@ -601,5 +608,24 @@ export function validateFeedCodes(raw: unknown): string[] {
     out.push(code);
   }
   if (out.length > FEED_CODES_LIMIT) throw new Error(`Maximum ${FEED_CODES_LIMIT} coduri`);
+  return out;
+}
+
+/** Validează categoriile alese pe produs (cod -> categorie). */
+export function validateProductCategories(raw: unknown): Record<string, string> {
+  const c = (raw as { categories?: unknown })?.categories;
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) throw new Error('categories trebuie să fie un obiect');
+  const out: Record<string, string> = {};
+  const entries = Object.entries(c as Record<string, unknown>);
+  if (entries.length > FEED_CODES_LIMIT) throw new Error(`Maximum ${FEED_CODES_LIMIT} produse`);
+  for (const [k, v] of entries) {
+    const code = k.trim();
+    if (!code) continue;
+    if (code.length > 100) throw new Error('Cod prea lung');
+    if (typeof v !== 'string') throw new Error(`Categoria pentru ${code} trebuie să fie text`);
+    const cat = v.trim();
+    if (cat.length > MAPPING_LIMITS.maxText) throw new Error(`Categorie prea lungă la ${code}`);
+    if (cat) out[code] = cat;
+  }
   return out;
 }

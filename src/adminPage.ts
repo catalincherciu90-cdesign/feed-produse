@@ -898,7 +898,7 @@ function confirmDelete(sku) {
 }
 
 // ---------- Date tehnice (producător) ----------
-var tech = { data: null, mapping: null, meta: null, loading: null };
+var tech = { data: null, mapping: null, meta: null, loading: null, productCategories: {}, catDirty: false };
 function techCodes() {
   return $('tech-codes').value.split(/[\s,;]+/).map(function (x) { return x.trim(); }).filter(Boolean);
 }
@@ -910,9 +910,10 @@ function loadTech(force) {
   tech.loading = Promise.all([
     api('GET', 'bapp-mapping'),
     api('GET', 'bapp-feed-codes').then(function (r) { tech.feedCodes = r.codes || []; renderTechFeedInfo(); }),
+    api('GET', 'bapp-product-categories').then(function (r) { tech.productCategories = r.categories || {}; tech.catDirty = false; }),
     api('GET', 'bapp').catch(function (e) { if (e.status === 404) return null; throw e; })
   ]).then(function (res) {
-    tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[2];
+    tech.meta = res[0]; tech.mapping = res[0].mapping; tech.data = res[3];
     renderTechInfo(); renderMapping();
   }).catch(function (e) {
     $('tech-info').textContent = 'Eroare: ' + e.message;
@@ -942,7 +943,9 @@ $('tech-feed-save').addEventListener('click', function () {
   var codes = techCodes();
   var msg = codes.length ? 'Salvez ' + fmtNum(codes.length) + ' coduri pentru feed…' : 'Golesc lista feed-ului…';
   toast(msg);
-  api('PUT', 'bapp-feed-codes', { codes: codes }).then(function (res) {
+  (tech.catDirty ? saveProductCategories() : Promise.resolve()).then(function () {
+    return api('PUT', 'bapp-feed-codes', { codes: codes });
+  }).then(function (res) {
     tech.feedCodes = codes; renderTechFeedInfo();
     // Feed-ul se generează la sincronizare: o pornim imediat, ca linkul să funcționeze.
     if (!state.syncing && res.count) {
@@ -960,7 +963,26 @@ $('tech-feed-load').addEventListener('click', function () {
   });
 });
 function techTable() {
-  return BAPP.buildImportTable(techCodes(), tech.data, tech.mapping, BAPP.translateValue, tech.meta.columns);
+  var m = Object.assign({}, tech.mapping, { productCategories: tech.productCategories || {} });
+  return BAPP.buildImportTable(techCodes(), tech.data, m, BAPP.translateValue, tech.meta.columns);
+}
+/** Categoria propusă pentru o familie Braytron: corectura ta din Mapare, altfel cea învățată. */
+function proposedCategory(family) {
+  if (!family) return '';
+  var own = (tech.mapping.categories || {})[family];
+  if (own) return own;
+  var c = tech.data && tech.data.categories && tech.data.categories[family];
+  return (c && c.category) || '';
+}
+function saveProductCategories() {
+  return api('PUT', 'bapp-product-categories', { categories: tech.productCategories || {} }).then(function (res) {
+    tech.catDirty = false; updateCatState();
+    return res;
+  });
+}
+function updateCatState() {
+  var e = $('tech-cat-state'); if (!e) return;
+  e.textContent = tech.catDirty ? 'Categorii modificate, nesalvate' : '';
 }
 $('tech-clear').addEventListener('click', function () { $('tech-codes').value = ''; clear($('tech-result')); });
 $('tech-all').addEventListener('click', function () {
@@ -982,6 +1004,22 @@ $('tech-preview').addEventListener('click', function () {
       el('span', { class: 'muted', text: fmtNum(t.rows[0].length) + ' coloane în fișier' })
     ]));
     if (t.missing.length) root.appendChild(el('div', { class: 'alert warn', text: 'Negăsite la producător: ' + t.missing.slice(0, 50).join(', ') + (t.missing.length > 50 ? ' …' : '') }));
+    if ((tech.mapping.categoryMode || 'new') !== 'off') {
+      var bulk = el('input', { id: 'tech-bulk-cat', list: 'site-cats', placeholder: 'categorie pentru toate produsele noi', style: 'max-width:420px' });
+      var newOnes = t.perProduct.filter(function (p) { return !p.existing; });
+      root.appendChild(el('div', { class: 'row', style: 'margin:6px 0 10px' }, [
+        bulk,
+        el('button', { class: 'btn', type: 'button', text: 'Pune la toate produsele noi (' + fmtNum(newOnes.length) + ')', onclick: function () {
+          var v = bulk.value.trim(); if (!v) return toast('Scrie sau alege o categorie.');
+          newOnes.forEach(function (p) { tech.productCategories[p.code] = v; });
+          tech.catDirty = true; $('tech-preview').click();
+        } }),
+        el('button', { class: 'btn primary', type: 'button', text: 'Salvează categoriile', onclick: function () {
+          saveProductCategories().then(function (r) { toast(fmtNum(r.count) + ' categorii salvate. Se aplică în fișier și în feed.'); }).catch(function (e) { toast('Eroare: ' + e.message); });
+        } }),
+        el('span', { id: 'tech-cat-state', class: 'small', style: 'color:var(--warn)' })
+      ]));
+    }
     var tb = el('tbody');
     t.perProduct.slice(0, 200).forEach(function (p) {
       var prod = tech.data.products[p.supplierCode]; var img = prod && prod.p && prod.p[0];
@@ -992,7 +1030,7 @@ $('tech-preview').addEventListener('click', function () {
         el('td', { 'data-label': 'Nume', text: (prod && prod.n) || '' }),
         el('td', { class: 'num', 'data-label': 'Valori', text: fmtNum(p.values) }),
         el('td', { class: 'num', 'data-label': 'Poze', text: fmtNum(p.photos) }),
-        el('td', { 'data-label': 'Categorie' }, [categoryInfo(p)])
+        el('td', { 'data-label': 'Categorie' }, [categoryInput(p)])
       ]));
     });
     root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [
@@ -1000,6 +1038,7 @@ $('tech-preview').addEventListener('click', function () {
       tb
     ])]));
     if (t.perProduct.length > 200) root.appendChild(el('p', { class: 'small muted', text: 'Afișez primele 200. Fișierul le conține pe toate.' }));
+    updateCatState();
   });
 });
 $('tech-download').addEventListener('click', function () {
@@ -1016,6 +1055,29 @@ $('tech-download').addEventListener('click', function () {
     toast('Fișier generat: ' + fmtNum(t.perProduct.length) + ' produse' + (t.missing.length ? ', ' + fmtNum(t.missing.length) + ' negăsite' : ''));
   });
 });
+
+function categoryInput(p) {
+  var mode = tech.mapping.categoryMode || 'new';
+  var box = el('div', { class: 'small' });
+  if (mode === 'off') { box.appendChild(badge(['categoria nu se exportă', 'b-muted'])); return box; }
+  var chosen = (tech.productCategories || {})[p.code] || '';
+  var proposed = proposedCategory(p.family);
+  var placeholder = p.existing && mode === 'new' ? 'rămâne cea actuală' : (proposed || 'alege categoria');
+  var input = el('input', { class: 'prod-cat', list: 'site-cats', value: chosen, placeholder: placeholder, style: 'min-width:220px' });
+  input.addEventListener('change', function () {
+    var v = input.value.trim();
+    if (v) tech.productCategories[p.code] = v; else delete tech.productCategories[p.code];
+    tech.catDirty = true; updateCatState();
+  });
+  box.appendChild(input);
+  var marks = el('div', { class: 'row', style: 'gap:4px;margin-top:3px' });
+  if (!p.existing) marks.appendChild(badge(['produs nou', 'b-info']));
+  if (chosen) marks.appendChild(badge(['aleasă de tine', 'b-ok']));
+  else if (!p.existing || mode === 'all') marks.appendChild(proposed ? badge(['propusă', 'b-muted']) : badge(['fără categorie', 'b-warn']));
+  box.appendChild(marks);
+  if (p.family) box.appendChild(el('div', { class: 'muted', style: 'margin-top:2px', text: 'Braytron: ' + p.family }));
+  return box;
+}
 
 function categoryInfo(p) {
   var mode = tech.mapping.categoryMode || 'new';

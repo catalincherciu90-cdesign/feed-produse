@@ -348,7 +348,8 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
         let mapping = defaultMapping();
         const savedMapping = await getJson<unknown>(kv, KV_KEYS.bappMapping);
         if (savedMapping) mapping = validateMapping(savedMapping, TEAMSHARE_COLUMNS);
-        const table = buildImportTable(feedCodes, bappData, mapping, translateValue, TEAMSHARE_COLUMNS);
+        const productCategories = (await getJson<Record<string, string>>(kv, KV_KEYS.bappProductCategories)) ?? {};
+        const table = buildImportTable(feedCodes, bappData, { ...mapping, productCategories }, translateValue, TEAMSHARE_COLUMNS);
         const xml = buildTechFeedXml(table.rows);
         await kv.put(KV_KEYS.techFeed, xml);
         status.techFeed = {

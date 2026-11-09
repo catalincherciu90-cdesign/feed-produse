@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildImportTable, buildTechFeedXml, buildXlsx, defaultMapping, DEFAULT_RULES, teamshareTag, translateValue, validateFeedCodes, validateMapping } from '../src/bapp';
+import { buildImportTable, buildTechFeedXml, buildXlsx, defaultMapping, DEFAULT_RULES, teamshareTag, translateValue, validateFeedCodes, validateMapping, validateProductCategories } from '../src/bapp';
 import { parseBapp } from '../src/bappParse';
 import { TEAMSHARE_COLUMNS } from '../src/teamshareColumns';
 
@@ -188,5 +188,34 @@ describe('categorii', () => {
     expect(validateMapping({ ...defaultMapping(), categories: { 'A / B': ' X ' } }, TEAMSHARE_COLUMNS).categories).toEqual({ 'A / B': 'X' });
     expect(() => validateMapping({ ...defaultMapping(), categoryMode: 'mereu' }, TEAMSHARE_COLUMNS)).toThrow(/categoryMode/);
     expect(validateMapping({ rules: {}, imageSeparator: '#' }, TEAMSHARE_COLUMNS).categoryMode).toBe('new'); // mapare salvată înainte de categorii
+  });
+});
+
+describe('categoria aleasă pe produs', () => {
+  const X = (code: string) => `<product><code>${code}</code><photos/><sections><section><categories><category><attributes>
+<attribute><slug>main_family</slug><title>F</title><value>Electrice</value></attribute>
+<attribute><slug>sub_family</slug><title>S</title><value>MCB</value></attribute>
+</attributes></category></categories></section></sections></product>`;
+  const d = parseBapp(`<response><products>${X('A1')}${X('N1')}${X('N2')}</products></response>`,
+    [{ sku: 'BR-A1', category: 'Sigurante Automate' }], { codePrefix: 'BR-', source: 's', generatedAt: 'now' });
+  const cat = (t: { rows: string[][] }, code: string) => t.rows.find((r) => r[0] === code)![t.rows[0].indexOf('Category')];
+
+  it('are prioritate față de categoria propusă și se aplică și la produse existente', () => {
+    const m = { ...defaultMapping(), productCategories: { N1: 'Electrice/Siguranțe noi', 'BR-A1': 'Mutat aici' } };
+    const t = buildImportTable(['BR-A1', 'N1', 'N2'], d, m, translateValue, TEAMSHARE_COLUMNS);
+    expect(cat(t, 'N1')).toBe('Electrice/Siguranțe noi');
+    expect(cat(t, 'N2')).toBe('Sigurante Automate'); // propusă
+    expect(cat(t, 'BR-A1')).toBe('Mutat aici'); // alegere explicită
+  });
+
+  it('modul „off” nu exportă nicio categorie, nici cele alese', () => {
+    const m = { ...defaultMapping(), categoryMode: 'off' as const, productCategories: { N1: 'X' } };
+    expect(buildImportTable(['N1'], d, m, translateValue, TEAMSHARE_COLUMNS).rows[0]).not.toContain('Category');
+  });
+
+  it('validează lista', () => {
+    expect(validateProductCategories({ categories: { ' N1 ': ' X ', N2: '' } })).toEqual({ N1: 'X' });
+    expect(() => validateProductCategories({ categories: [] })).toThrow();
+    expect(() => validateProductCategories({ categories: { N1: 5 } })).toThrow(/text/);
   });
 });

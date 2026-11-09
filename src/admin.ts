@@ -6,7 +6,7 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
-import { defaultMapping, UNCERTAIN_RULES, validateFeedCodes, validateMapping } from './bapp';
+import { defaultMapping, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 
 export interface AdminEnv extends TriggerEnv {
@@ -185,6 +185,17 @@ export async function handleAdmin(
         const codes = validateFeedCodes(await readBody(req, 512 * 1024));
         await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify(codes));
         return json({ ok: true, count: codes.length });
+      }
+
+      case 'GET /admin/api/bapp-product-categories': {
+        const saved = await kv.get(KV_KEYS.bappProductCategories, { cacheTtl: 30 });
+        return raw(`{"categories":${saved ?? '{}'}}`);
+      }
+
+      case 'PUT /admin/api/bapp-product-categories': {
+        const categories = validateProductCategories(await readBody(req, 1024 * 1024));
+        await kv.put(KV_KEYS.bappProductCategories, JSON.stringify(categories));
+        return json({ ok: true, count: Object.keys(categories).length });
       }
 
       case 'POST /admin/api/sync': {

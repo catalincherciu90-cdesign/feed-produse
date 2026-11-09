@@ -20,6 +20,7 @@ export const KV_KEYS = {
   bappHash: 'bapp:hash', // amprenta ultimelor date scrise (scriem doar dacă s-au schimbat)
   bappMapping: 'admin:bapp-mapping', // maparea atribut -> coloană Teamshare și traducerile
   bappFeedCodes: 'admin:bapp-feed-codes', // codurile alese pentru /date-tehnice.xml
+  bappProductCategories: 'admin:bapp-product-categories', // categoria aleasă pe produs (cod -> categorie)
   techFeed: 'feed:date-tehnice.xml', // feed XML cu date tehnice și poze pentru importul în Teamshare
 } as const;
 

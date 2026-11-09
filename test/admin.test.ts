@@ -226,3 +226,13 @@ describe('API listă coduri pentru feed', () => {
     expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: ['BR-1', 'BR-2'] });
   });
 });
+
+describe('API categorii pe produs', () => {
+  it('salvează și întoarce categoriile', async () => {
+    const { kv, call } = setup();
+    expect(await (await call('GET', '/admin/api/bapp-product-categories')).json()).toEqual({ categories: {} });
+    const r = await call('PUT', '/admin/api/bapp-product-categories', { categories: { N1: 'Cat A', N2: '' } });
+    expect(await r.json()).toEqual({ ok: true, count: 1 });
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappProductCategories)!)).toEqual({ N1: 'Cat A' });
+  });
+});
