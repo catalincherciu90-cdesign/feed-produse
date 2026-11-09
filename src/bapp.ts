@@ -498,11 +498,20 @@ function cdataTs(v: string): string {
   return `<![CDATA[${clean.replace(/]]>/g, ']]]]><![CDATA[>')}]]>`;
 }
 
-/** Feed XML din tabelul de import (primul rând = antet). Celulele goale nu apar în XML. */
-export function buildTechFeedXml(rows: string[][]): string {
+/**
+ * Feed XML din tabelul de import (primul rând = antet). Celulele goale nu apar în XML.
+ * Primul <product> este rândul de titluri (ca în exportul Teamshare): fiecare tag conține numele
+ * exact al coloanei din șablonul de import. În Teamshare: „First row has column names” bifat.
+ */
+export function buildTechFeedXml(rows: string[][], opts: { headerRow?: boolean } = {}): string {
   const header = rows[0] ?? [];
   const tags = header.map(teamshareTag);
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<products>'];
+  if (opts.headerRow !== false && header.length) {
+    lines.push('<product>');
+    header.forEach((name, i) => lines.push(`<${tags[i]}>${cdataTs(name)}</${tags[i]}>`));
+    lines.push('</product>');
+  }
   for (const row of rows.slice(1)) {
     lines.push('<product>');
     row.forEach((v, i) => {

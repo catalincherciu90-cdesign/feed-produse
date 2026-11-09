@@ -435,6 +435,7 @@ describe('runSync: feed cu date tehnice', () => {
     expect(s.ok).toBe(true);
     expect(s.techFeed).toMatchObject({ codes: 2, products: 1, missing: 1 });
     const xml = kv.store.get(KV_KEYS.techFeed)!;
+    expect(xml).toContain('<Product_Code><![CDATA[ProductCode]]></Product_Code>'); // rândul de titluri
     expect(xml).toContain('<Product_Code><![CDATA[0012]]></Product_Code>');
     expect(xml).toContain('<Culoarea_corpului_P39493><![CDATA[Alb]]></Culoarea_corpului_P39493>');
     expect(s.warnings?.join(' ')).toMatch(/1 coduri negăsite/);

@@ -118,7 +118,7 @@ describe('feed /date-tehnice.xml', () => {
 
   it('generează XML valid, cu CDATA și fără celule goale', () => {
     const t = buildImportTable(['BR-BH07-04101', 'ALT-COD'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
-    const xml = buildTechFeedXml(t.rows);
+    const xml = buildTechFeedXml(t.rows, { headerRow: false });
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<products>')).toBe(true);
     expect(xml).toContain('<Product_Code><![CDATA[BR-BH07-04101]]></Product_Code>');
     expect(xml).toContain('<Culoarea_corpului_P39493><![CDATA[Negru]]></Culoarea_corpului_P39493>');
@@ -126,6 +126,15 @@ describe('feed /date-tehnice.xml', () => {
     expect(xml).toContain('<IP_Grad_de_protectie_P39333><![CDATA[IP20 > IP10]]></IP_Grad_de_protectie_P39333>');
     expect(xml.match(/<product>/g)).toHaveLength(2);
     expect(xml).not.toMatch(/<ProductImage_P39360><!\[CDATA\[\]\]>/); // al doilea produs nu are poze: tag-ul lipsește
+  });
+
+  it('primul <product> e rândul de titluri cu numele coloanelor din șablon', () => {
+    const t = buildImportTable(['BR-BH07-04101'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    const xml = buildTechFeedXml(t.rows);
+    expect(xml.match(/<product>/g)).toHaveLength(2);
+    const first = xml.slice(xml.indexOf('<product>'), xml.indexOf('</product>'));
+    expect(first).toContain('<Product_Code><![CDATA[ProductCode]]></Product_Code>');
+    expect(first).toContain('<Culoarea_corpului_P39493><![CDATA[Culoarea corpului: - P39493]]></Culoarea_corpului_P39493>');
   });
 
   it('validează lista de coduri', () => {
