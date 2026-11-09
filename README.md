@@ -87,7 +87,7 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 2. **Verifică codurile**: vezi ce s-a găsit, câte valori tehnice și câte poze are fiecare produs.
 3. **Descarcă fișierul de import** și îl imporți în Teamshare.
 
-**Ce conține fișierul:** `ProductCode`, doar coloanele tehnice care au valori la produsele alese și pozele: `ProductImage - P39360` (prima poză) și `AddImages - P39379` (restul, separate prin `#`). Prețul, stocul și descrierea nu sunt în fișier, deci nu se schimbă.
+**Ce conține fișierul:** `ProductCode`, `BrandName` (implicit **Braytron**, se schimbă din Mapare; gol = nu se exportă), `Category` (vezi mai jos), doar coloanele tehnice care au valori la produsele alese și pozele: `ProductImage - P39360` (prima poză) și `AddImages - P39379` (restul, separate prin `#`). Prețul, stocul și descrierea nu sunt în fișier, deci nu se schimbă.
 
 **Legătura cu produsele tale:** codul tău = `BR-` + codul Braytron (1.927 de produse). Dacă nu se potrivește codul, se caută după EAN (încă 62). Restul produselor Braytron nu au corespondent în catalogul tău.
 

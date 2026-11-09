@@ -1329,7 +1329,10 @@ function renderMapping() {
       el('input', { id: 'map-sep', value: m.imageSeparator, maxlength: '5', style: 'max-width:90px' }),
       el('label', { for: 'map-prefix', style: 'margin-top:12px', text: 'Prefixul codurilor tale față de codurile producătorului' }),
       el('input', { id: 'map-prefix', value: m.codePrefix, maxlength: '20', style: 'max-width:140px' }),
-      el('div', { class: 'help', text: 'Ex.: BR- (codul tău BR-BG38-12581 = codul Braytron BG38-12581).' })
+      el('div', { class: 'help', text: 'Ex.: BR- (codul tău BR-BG38-12581 = codul Braytron BG38-12581).' }),
+      el('label', { for: 'map-brand', style: 'margin-top:12px', text: 'Producător (coloana BrandName)' }),
+      el('input', { id: 'map-brand', value: m.brandName == null ? 'Braytron' : m.brandName, maxlength: '100', style: 'max-width:220px' }),
+      el('div', { class: 'help', text: 'Se pune la toate produsele din fișier și din feed. Gol = nu se exportă.' })
     ])
   ]));
   renderCategories(root);
@@ -1358,7 +1361,7 @@ function collectMapping() {
     if (v) categories[tr.getAttribute('data-family')] = v;
   });
   return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim(),
-    categoryMode: $('map-catmode') ? $('map-catmode').value : 'new', categories: categories };
+    categoryMode: $('map-catmode') ? $('map-catmode').value : 'new', categories: categories, brandName: $('map-brand').value.trim() };
 }
 function saveMapping() {
   api('PUT', 'bapp-mapping', collectMapping()).then(function (res) {

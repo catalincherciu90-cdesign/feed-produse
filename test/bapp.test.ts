@@ -219,3 +219,28 @@ describe('categoria aleasă pe produs', () => {
     expect(() => validateProductCategories({ categories: { N1: 5 } })).toThrow(/text/);
   });
 });
+
+describe('producător (BrandName)', () => {
+  it('pune Braytron la toate produsele; se poate schimba sau opri', () => {
+    const t = buildImportTable(['BR-BH07-04101', 'ALT-COD'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    const i = t.rows[0].indexOf('BrandName');
+    expect(i).toBe(t.rows[0].indexOf('BrandName')); // coloana există în șablon
+    expect(TEAMSHARE_COLUMNS).toContain('BrandName');
+    expect(t.rows.slice(1).map((r) => r[i])).toEqual(['Braytron', 'Braytron']);
+    const other = buildImportTable(['ALT-COD'], data, { ...defaultMapping(), brandName: 'Alt brand' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(other.rows[1][other.rows[0].indexOf('BrandName')]).toBe('Alt brand');
+    const off = buildImportTable(['ALT-COD'], data, { ...defaultMapping(), brandName: '' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(off.rows[0]).not.toContain('BrandName');
+  });
+
+  it('maparea salvată înainte rămâne cu Braytron', () => {
+    expect(validateMapping({ rules: {}, imageSeparator: '#' }, TEAMSHARE_COLUMNS).brandName).toBe('Braytron');
+    expect(validateMapping({ ...defaultMapping(), brandName: '' }, TEAMSHARE_COLUMNS).brandName).toBe('');
+  });
+
+  it('apare și în feed-ul XML', () => {
+    const xml = buildTechFeedXml(buildImportTable(['BR-BH07-04101'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS).rows);
+    expect(xml).toContain('<BrandName><![CDATA[BrandName]]></BrandName>'); // rândul de titluri
+    expect(xml).toContain('<BrandName><![CDATA[Braytron]]></BrandName>');
+  });
+});

@@ -54,6 +54,8 @@ export interface BappMapping {
   categoryMode: 'new' | 'all' | 'off';
   /** Corecturile tale: „Familie / Subfamilie” -> categoria de pe site (au prioritate față de cea învățată) */
   categories: Record<string, string>;
+  /** Producătorul pus în coloana BrandName la toate produsele; gol = nu se exportă */
+  brandName: string;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -212,6 +214,7 @@ export function defaultMapping(): BappMapping {
     codePrefix: 'BR-',
     categoryMode: 'new',
     categories: {},
+    brandName: 'Braytron',
   };
 }
 
@@ -263,6 +266,7 @@ export function buildImportTable(
     categories?: Record<string, string>;
     /** Categoria aleasă de tine pentru un produs anume (cod -> categorie): prioritate maximă. */
     productCategories?: Record<string, string>;
+    brandName?: string;
   },
   translateFn: (v: string, t: Record<string, string>) => string,
   columnOrder: readonly string[],
@@ -275,6 +279,8 @@ export function buildImportTable(
   const IMG = 'ProductImage - P39360';
   const ADD = 'AddImages - P39379';
   const CAT = 'Category';
+  const BRAND = 'BrandName';
+  const brand = String(mapping.brandName || '').trim();
   const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string> } }[] = [];
   const missing: string[] = [];
   const seen: Record<string, boolean> = {};
@@ -308,6 +314,10 @@ export function buildImportTable(
   for (const f of found) {
     const row: Record<string, string> = {};
     row[CODE] = f.code;
+    if (brand) {
+      row[BRAND] = brand;
+      used[BRAND] = true;
+    }
     let values = 0;
     for (const slug of Object.keys(f.prod.a)) {
       const rule = mapping.rules[slug];
@@ -526,7 +536,9 @@ export function validateMapping(raw: unknown, columns: readonly string[]): BappM
     const key = str(k, MAPPING_LIMITS.maxText, 'Familie').trim();
     if (key) categories[key] = str(v, MAPPING_LIMITS.maxText, `Categoria pentru „${key}”`).trim();
   }
+  const brandName = r.brandName === undefined ? 'Braytron' : str(r.brandName, 100, 'Producătorul').trim();
   return {
+    brandName,
     categoryMode: mode,
     categories,
     rules,
