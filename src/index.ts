@@ -67,7 +67,12 @@ export default {
     if (url.pathname === '/date-tehnice.xml' && req.method === 'GET') {
       // Date tehnice și poze de la producător, pentru produsele alese în panou (import în Teamshare).
       const body = await env.FEED_KV.get(KV_KEYS.techFeed, 'stream');
-      if (!body) return new Response('Feed-ul cu date tehnice nu a fost generat încă', { status: 503 });
+      if (!body) {
+        return new Response(
+          'Feed-ul cu date tehnice nu a fost generat încă: salvează lista de coduri în panou (tab „Date tehnice”) și sincronizează.',
+          { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+        );
+      }
       return new Response(body, {
         headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=300' },
       });

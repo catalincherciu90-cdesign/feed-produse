@@ -216,10 +216,10 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
           <h3>Feed pentru importul în site (Teamshare)</h3>
           <p id="tech-feed-info" class="small muted">Se încarcă…</p>
           <div class="row">
-            <button class="btn" type="button" id="tech-feed-save">Salvează lista de mai sus pentru feed</button>
+            <button class="btn" type="button" id="tech-feed-save">Salvează lista și generează feed-ul</button>
             <button class="link small" type="button" id="tech-feed-load">Încarcă lista salvată</button>
           </div>
-          <p class="help">Feed-ul conține doar produsele din lista salvată, cu aceeași mapare și aceleași traduceri ca fișierul .xlsx. Se regenerează la fiecare „Sincronizează acum”.</p>
+          <p class="help">Feed-ul conține doar produsele din lista salvată, cu aceeași mapare și aceleași traduceri ca fișierul .xlsx. După salvare pornește automat o sincronizare (sub un minut); apoi se regenerează la fiecare „Sincronizează acum”.</p>
         </div>
         <p class="help">Fișierul conține doar codul, coloanele tehnice cu valori și pozele (ProductImage + AddImages). Câmpurile care nu sunt în fișier (preț, stoc, descriere) nu se schimbă la import.</p>
         <div id="tech-result" style="margin-top:12px"></div>
@@ -944,7 +944,13 @@ $('tech-feed-save').addEventListener('click', function () {
   toast(msg);
   api('PUT', 'bapp-feed-codes', { codes: codes }).then(function (res) {
     tech.feedCodes = codes; renderTechFeedInfo();
-    toast(fmtNum(res.count) + ' coduri salvate. Feed-ul se actualizează la următoarea sincronizare.');
+    // Feed-ul se generează la sincronizare: o pornim imediat, ca linkul să funcționeze.
+    if (!state.syncing && res.count) {
+      toast(fmtNum(res.count) + ' coduri salvate. Pornesc sincronizarea ca să generez feed-ul…');
+      setTimeout(function () { $('sync').click(); }, 800);
+    } else {
+      toast(fmtNum(res.count) + ' coduri salvate. Feed-ul se actualizează la următoarea sincronizare.');
+    }
   }).catch(function (e) { toast('Eroare: ' + e.message); });
 });
 $('tech-feed-load').addEventListener('click', function () {
