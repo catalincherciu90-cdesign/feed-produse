@@ -1221,7 +1221,7 @@ function categoryInput(p) {
   var box = el('div', { class: 'small' });
   if (mode === 'off') { box.appendChild(badge(['categoria nu se exportă', 'b-muted'])); return box; }
   var chosen = (tech.productCategories || {})[p.code] || '';
-  var proposed = proposedCategory(p.family);
+  var proposed = p.suggested || proposedCategory(p.family);
   var placeholder = p.existing && mode === 'new' ? 'rămâne cea actuală' : (proposed || 'alege categoria');
   var first = p.existing && mode === 'new' ? 'Rămâne cea actuală' : (proposed ? 'Propusă: ' + proposed : '— alege categoria —');
   var input = categorySelect(chosen, first, { class: 'prod-cat', style: 'min-width:240px;max-width:340px' });
@@ -1253,6 +1253,28 @@ function categoryInfo(p) {
   return box;
 }
 
+function familyProposal(c) {
+  var box = el('div', { class: 'small' });
+  if (c.source === 'rules') {
+    box.appendChild(badge(['după numele produsului', 'b-info']));
+    box.appendChild(el('div', { class: 'muted', style: 'margin-top:2px', text: 'Familia are produse în mai multe categorii pe site; fiecare produs primește categoria potrivită după tipul din nume. Vezi categoria fiecăruia la „Verifică codurile”.' }));
+    return box;
+  }
+  if (!c.category) {
+    box.appendChild(badge(['fără categorie pe site', 'b-warn']));
+    if (c.suggestNew) box.appendChild(el('div', { style: 'margin-top:2px', text: 'Propunere: creează în Teamshare categoria „' + c.suggestNew + '”, apoi sincronizează și alege-o aici.' }));
+    return box;
+  }
+  box.appendChild(document.createTextNode(c.category + ' '));
+  if (c.source === 'manual') {
+    box.appendChild(badge(['aleasă de Claude', 'b-info']));
+    if (c.learned) box.appendChild(el('div', { class: 'muted', style: 'margin-top:2px', text: 'Pe site, majoritatea erau în: ' + c.learned }));
+  } else {
+    box.appendChild(badge([c.share + '% pe site', c.share >= 90 ? 'b-ok' : 'b-warn']));
+  }
+  return box;
+}
+
 function renderCategories(root) {
   var m = tech.mapping, d = tech.data;
   var cats = (d && d.categories) || {};
@@ -1277,8 +1299,8 @@ function renderCategories(root) {
     tb.appendChild(el('tr', { 'data-family': f }, [
       el('td', { 'data-label': 'Familie Braytron', text: f }),
       el('td', { class: 'num', 'data-label': 'Produse', text: fmtNum(c.total) + (c.total > c.linked ? ' (' + fmtNum(c.total - c.linked) + ' noi)' : '') }),
-      el('td', { 'data-label': 'Propusă' }, [c.category ? el('div', null, [document.createTextNode(c.category + ' '), badge([c.share + '%', c.share >= 90 ? 'b-ok' : 'b-warn'])]) : badge(['fără', 'b-warn'])]),
-      el('td', { 'data-label': 'Categoria ta' }, [categorySelect(own, c.category ? 'Propusă: ' + c.category : '— alege categoria —', { class: 'map-cat', style: 'max-width:340px' })])
+      el('td', { 'data-label': 'Propusă' }, [familyProposal(c)]),
+      el('td', { 'data-label': 'Categoria ta' }, [categorySelect(own, c.source === 'rules' ? 'Propusă: după nume' : (c.category ? 'Propusă: ' + c.category : '— alege categoria —'), { class: 'map-cat', style: 'max-width:340px' })])
     ]));
   });
   root.appendChild(el('div', { class: 'table-wrap' }, [el('table', { class: 'cards' }, [

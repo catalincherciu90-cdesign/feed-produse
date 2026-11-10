@@ -158,8 +158,8 @@ describe('categorii', () => {
   const d = parseBapp(xml, ours, { codePrefix: 'BR-', source: 's', generatedAt: 'now' });
 
   it('învață categoria majoritară din produsele legate', () => {
-    expect(d.categories!['Electrice / MCB']).toEqual({ category: 'Sigurante Automate', share: 66.7, linked: 3, total: 4 });
-    expect(d.categories!['Altele / Nou']).toEqual({ category: '', share: 0, linked: 0, total: 1 });
+    expect(d.categories!['Electrice / MCB']).toMatchObject({ category: 'Sigurante Automate', share: 66.7, linked: 3, total: 4, source: 'site' });
+    expect(d.categories!['Altele / Nou']).toMatchObject({ category: '', share: 0, linked: 0, total: 1 });
     expect(d.siteCategories).toEqual(['Electrice/Altele', 'Sigurante Automate']);
   });
 
@@ -242,5 +242,43 @@ describe('producător (BrandName)', () => {
     const xml = buildTechFeedXml(buildImportTable(['BR-BH07-04101'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS).rows);
     expect(xml).toContain('<BrandName><![CDATA[BrandName]]></BrandName>'); // rândul de titluri
     expect(xml).toContain('<BrandName><![CDATA[Braytron]]></BrandName>');
+  });
+});
+
+describe('maparea manuală a categoriilor (Claude)', () => {
+  const P = (code: string, name: string, main: string, sub: string) => `<product><code>${code}</code><name>${name}</name><photos/><sections><section><categories><category><attributes>
+<attribute><slug>main_family</slug><title>F</title><value>${main}</value></attribute>
+<attribute><slug>sub_family</slug><title>S</title><value>${sub}</value></attribute>
+</attributes></category></categories></section></sections></product>`;
+  const xml = `<response><products>
+${P('G1', 'BRY-ADVANCE-14W-E27-G95-4000K-LED BULB', 'Becuri & Tuburi', 'Becuri glob')}
+${P('G2', 'BRY-ADVANCE-6,5W-E14-P45-3000K-LED BULB', 'Becuri & Tuburi', 'Becuri glob')}
+${P('G3', 'BRY-ADVANCE-7W-E27-G95-SFT-3000K-BULB', 'Becuri & Tuburi', 'Becuri glob')}
+${P('F1', 'SPB-SPIRAL-09MM-NON-INSULATED STEEL SPIRAL', 'Electrice', 'Flexible Pipe')}
+${P('S1', 'BRY-LINEA-1G-16A-WHT-SOCKET', 'Electrice', 'Întrerupător și priză')}
+</products></response>`;
+  const d = parseBapp(xml, [], { codePrefix: 'BR-', source: 's', generatedAt: 'now' });
+
+  it('regulile după nume împart familia pe categoriile site-ului', () => {
+    expect(d.products.G1.k).toBe('Becuri si tuburi/Globe Bulbs');
+    expect(d.products.G2.k).toBe('Becuri si tuburi/Becuri Led A60/P45/G45');
+    expect(d.products.G3.k).toBe('Becuri si tuburi/Filament Bulbs');
+    expect(d.categories!['Becuri & Tuburi / Becuri glob'].source).toBe('rules');
+  });
+
+  it('familiile fără produse pe site primesc categoria manuală; cele fără categorie pe site sunt semnalate', () => {
+    expect(d.products.F1.k).toBe('Trasee Cabluri/Tub Flexibil Metalic');
+    expect(d.categories!['Electrice / Flexible Pipe']).toMatchObject({ category: 'Trasee Cabluri/Tub Flexibil Metalic', source: 'manual' });
+    expect(d.products.S1.k).toBeUndefined();
+    expect(d.categories!['Electrice / Întrerupător și priză'].suggestNew).toMatch(/Linea/);
+  });
+
+  it('în fișier: sugestia pe produs, iar corectura ta pe familie o înlocuiește', () => {
+    const t = buildImportTable(['G1', 'G2'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    const cat = (tb: { rows: string[][] }, c: string) => tb.rows.find((r) => r[0] === c)![tb.rows[0].indexOf('Category')];
+    expect(cat(t, 'G1')).toBe('Becuri si tuburi/Globe Bulbs');
+    expect(cat(t, 'G2')).toBe('Becuri si tuburi/Becuri Led A60/P45/G45');
+    const o = buildImportTable(['G1'], d, { ...defaultMapping(), categories: { 'Becuri & Tuburi / Becuri glob': 'X/Y' } }, translateValue, TEAMSHARE_COLUMNS);
+    expect(cat(o, 'G1')).toBe('X/Y');
   });
 });

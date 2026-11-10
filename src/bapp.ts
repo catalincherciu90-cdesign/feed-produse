@@ -13,6 +13,7 @@ export interface BappProduct {
   n?: string; // nume
   p: string[]; // poze, în ordine
   a: Record<string, string>; // atribut (slug) -> valoare
+  k?: string; // categoria sugerată pentru acest produs (regulă după nume / mapare manuală / învățată)
 }
 
 export interface BappData {
@@ -26,7 +27,18 @@ export interface BappData {
    * Corespondența familie producător -> categoria ta, învățată din produsele deja legate.
    * Cheie: „Familie / Subfamilie” (ex. „Electrice / MCB”).
    */
-  categories?: Record<string, { category: string; share: number; linked: number; total: number }>;
+  categories?: Record<
+    string,
+    {
+      category: string; // categoria propusă pentru familie
+      share: number; // cât de des e folosită pe site la produsele din familie (%)
+      linked: number;
+      total: number;
+      source?: 'site' | 'manual' | 'rules'; // site = învățată; manual = aleasă de Claude; rules = după nume
+      learned?: string; // categoria majoritară de pe site, dacă diferă de cea propusă
+      suggestNew?: string; // categorie nouă de creat în Teamshare (nu există pe site)
+    }
+  >;
   /** Toate categoriile de pe site (din feed-ul Teamshare), pentru alegere în panou. */
   siteCategories?: string[];
 }
@@ -252,7 +264,7 @@ export function translateValue(value: string, translations: Record<string, strin
 export function buildImportTable(
   codes: string[],
   data: {
-    products: Record<string, { c: string; p: string[]; a: Record<string, string> }>;
+    products: Record<string, { c: string; p: string[]; a: Record<string, string>; k?: string }>;
     index: Record<string, string>;
     categories?: Record<string, { category: string }>;
   },
@@ -273,7 +285,7 @@ export function buildImportTable(
 ): {
   rows: string[][];
   missing: string[];
-  perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string }[];
+  perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string; suggested: string }[];
 } {
   const CODE = 'ProductCode';
   const IMG = 'ProductImage - P39360';
@@ -281,7 +293,7 @@ export function buildImportTable(
   const CAT = 'Category';
   const BRAND = 'BrandName';
   const brand = String(mapping.brandName || '').trim();
-  const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string> } }[] = [];
+  const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string>; k?: string } }[] = [];
   const missing: string[] = [];
   const seen: Record<string, boolean> = {};
   const reverse: Record<string, string> = {};
@@ -307,7 +319,7 @@ export function buildImportTable(
 
   const cells: Record<string, string>[] = [];
   const used: Record<string, boolean> = {};
-  const perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string }[] = [];
+  const perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string; suggested: string }[] = [];
   const mode = mapping.categoryMode || 'new';
   const overrides = mapping.categories || {};
   const learned = data.categories || {};
@@ -351,16 +363,17 @@ export function buildImportTable(
     if (chosen && mode !== 'off') {
       row[CAT] = chosen;
       used[CAT] = true;
-    } else if (family) {
-      if (Object.prototype.hasOwnProperty.call(overrides, family)) category = String(overrides[family] || '').trim();
-      else if (learned[family]) category = learned[family].category;
     }
+    // Propunerea: corectura ta pe familie > sugestia pe produs (reguli după nume) > familia
+    if (family && Object.prototype.hasOwnProperty.call(overrides, family)) category = String(overrides[family] || '').trim();
+    else if (f.prod.k) category = f.prod.k;
+    else if (family && learned[family]) category = learned[family].category;
     if (!chosen && category && (mode === 'all' || (mode === 'new' && !f.existing))) {
       row[CAT] = category;
       used[CAT] = true;
     }
     cells.push(row);
-    perProduct.push({ code: f.code, supplierCode: f.prod.c, values: values, photos: photos.length, existing: f.existing, category: row[CAT] || '', family: family });
+    perProduct.push({ code: f.code, supplierCode: f.prod.c, values: values, photos: photos.length, existing: f.existing, category: row[CAT] || '', family: family, suggested: category });
   }
 
   // ordinea coloanelor: ca în șablonul Teamshare

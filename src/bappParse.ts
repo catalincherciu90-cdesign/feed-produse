@@ -4,6 +4,7 @@
  */
 import { XMLParser } from 'fast-xml-parser';
 import { familyKey, type BappData } from './bapp';
+import { curatedCategory, FAMILY_CATEGORIES, NAME_RULES, NEEDS_NEW_CATEGORY } from './categoryRules';
 
 // ---------------------------------------------------------------------------------------------
 // Citirea feed-ului (GitHub Actions)
@@ -117,6 +118,27 @@ export function parseBapp(
     const [best, n] = Object.entries(v).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
     categories[fam] = { category: best, share: Math.round((n / linked) * 1000) / 10, linked, total };
   }
+  // Maparea manuală (Claude): categoria familiei și reguli după numele produsului
+  const ruleFamilies = new Set(NAME_RULES.map((r) => r.family));
+  for (const [fam, c] of Object.entries(categories)) {
+    const manual = FAMILY_CATEGORIES[fam];
+    if (manual) {
+      if (c.category && c.category !== manual) c.learned = c.category;
+      c.category = manual;
+      c.source = 'manual';
+    } else if (ruleFamilies.has(fam)) {
+      c.source = 'rules';
+    } else if (c.category) {
+      c.source = 'site';
+    }
+    if (NEEDS_NEW_CATEGORY[fam]) c.suggestNew = NEEDS_NEW_CATEGORY[fam];
+  }
+  for (const pr of Object.values(products)) {
+    const fam = familyKey(pr.a);
+    const k = curatedCategory(fam, pr.n || '') || (categories[fam] && categories[fam].category) || '';
+    if (k) pr.k = k;
+  }
+
   const siteCategories = [...new Set(ours.map((o) => (o.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ro'));
 
   return {
