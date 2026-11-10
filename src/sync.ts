@@ -10,6 +10,7 @@ import { getJson, KV_KEYS, type KVStore } from './kv';
 import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
 import { buildImportTable, buildTechFeedXml, defaultMapping, readSavedFeedCodes, translateValue, validateMapping, type BappData, type SavedFeedCodes } from './bapp';
 import { parseBapp } from './bappParse';
+import { decodeCodesInput, type CodesPayload } from './codesInput';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 import { fetchSource, parseFeed, type Product } from './source';
 
@@ -35,7 +36,7 @@ export interface SyncStatus {
     fieldsUsed: Record<string, string | undefined>;
   };
   celFeed?: { products: number; orderable: number; blockedNoPrice: number; bytes: number };
-  techFeed?: { codes: number; products: number; missing: number; columns: number; bytes: number };
+  techFeed?: { from?: 'panou' | 'kv'; codes: number; products: number; missing: number; columns: number; bytes: number };
   bapp?: { products: number; linked: number; byCode: number; byEan: number; changed: boolean; bytes: number; error?: string };
   facebookFeed?: { included: number; inStock: number; skipped: { noPrice: number; noLink: number; noImage: number }; bytes: number };
   cel?: {
@@ -366,7 +367,24 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date(),
     }
 
     // 2b4. Feed cu date tehnice pentru importul în Teamshare: doar codurile alese în panou
-    const savedCodes = await readFeedCodes(kv, config.bapp.expectCodesSavedAt, opts, warnings);
+    // Lista vine direct de la panou, odată cu comanda de sincronizare; dacă lipsește, din KV.
+    let savedCodes: CodesPayload | null = null;
+    let codesFrom: 'panou' | 'kv' = 'kv';
+    try {
+      savedCodes = await decodeCodesInput(config.bapp.codesInput);
+    } catch (e) {
+      warnings.push(`Lista de coduri primită de la panou nu a putut fi citită (${e instanceof Error ? e.message : String(e)}); am folosit lista salvată.`);
+    }
+    if (savedCodes) {
+      codesFrom = 'panou';
+      const inKv = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+      // păstrăm în KV aceeași listă (și pentru sincronizările pornite din GitHub)
+      if (!inKv || inKv.savedAt < savedCodes.savedAt) {
+        await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt: savedCodes.savedAt, codes: savedCodes.codes }));
+      }
+    } else {
+      savedCodes = await readFeedCodes(kv, config.bapp.expectCodesSavedAt, opts, warnings);
+    }
     const feedCodes = savedCodes?.codes;
     if (feedCodes) {
       try {
@@ -375,11 +393,13 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date(),
         let mapping = defaultMapping();
         const savedMapping = await getJson<unknown>(kv, KV_KEYS.bappMapping);
         if (savedMapping) mapping = validateMapping(savedMapping, TEAMSHARE_COLUMNS);
-        const productCategories = (await getJson<Record<string, string>>(kv, KV_KEYS.bappProductCategories)) ?? {};
+        const productCategories =
+          savedCodes?.categories ?? (await getJson<Record<string, string>>(kv, KV_KEYS.bappProductCategories)) ?? {};
         const table = buildImportTable(feedCodes, bappData, { ...mapping, productCategories }, translateValue, TEAMSHARE_COLUMNS);
         const xml = buildTechFeedXml(table.rows);
         await kv.put(KV_KEYS.techFeed, xml);
         status.techFeed = {
+          from: codesFrom,
           codes: feedCodes.length,
           products: table.perProduct.length,
           missing: table.missing.length,

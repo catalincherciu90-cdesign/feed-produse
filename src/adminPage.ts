@@ -402,16 +402,21 @@ $('sync').addEventListener('click', function () {
   var prev = state.overview && state.overview.status ? state.overview.status.startedAt : null;
   syncButton('Se pornește…', true);
   api('POST', 'sync').then(function () {
-    state.syncing = { since: Date.now(), prevStartedAt: prev };
-    syncButton('Se sincronizează…', true);
-    renderStatus();
+    watchSync(prev);
     toast('Sincronizare pornită. Durează de obicei sub un minut.');
-    pollSync();
   }).catch(function (e) {
     syncButton('Sincronizează acum', false);
     toast('Nu am putut porni sincronizarea: ' + e.message);
   });
 });
+/** Sincronizarea a fost pornită: blochează butonul și verifică la 5 s când se termină. */
+function watchSync(prev) {
+  if (state.syncing && state.syncing.timer) clearTimeout(state.syncing.timer);
+  state.syncing = { since: Date.now(), prevStartedAt: prev };
+  syncButton('Se sincronizează…', true);
+  renderStatus();
+  pollSync();
+}
 function pollSync() {
   var s = state.syncing; if (!s) return;
   if (Date.now() - s.since > SYNC_TIMEOUT_MS) {
@@ -425,7 +430,10 @@ function pollSync() {
       if (st && st.startedAt !== s.prevStartedAt && st.finishedAt) {
         state.syncing = null; syncButton('Sincronizează acum', false);
         return load(false).then(function () {
-          toast(st.ok ? 'Sincronizare terminată cu succes.' : 'Sincronizarea s-a terminat cu erori. Vezi tab-ul Status.');
+          var tf = st.techFeed;
+          var extra = tf ? ' Feed date tehnice: ' + fmtNum(tf.products) + ' produse din ' + fmtNum(tf.codes) + ' coduri' + (tf.missing ? ' (' + fmtNum(tf.missing) + ' negăsite la Braytron)' : '') + '.' : '';
+          toast((st.ok ? 'Sincronizare terminată cu succes.' : 'Sincronizarea s-a terminat cu erori. Vezi tab-ul Status.') + extra);
+          if (!$('tab-tech').classList.contains('hidden')) { renderTechFeedInfo(); }
         });
       }
       pollSync();
@@ -1048,15 +1056,17 @@ function renderFeedPending() {
 /** Salvează lista feed-ului (și categoriile nesalvate), apoi pornește sincronizarea. */
 function saveFeedCodes(codes, doneMsg) {
   return (tech.catDirty ? saveProductCategories() : Promise.resolve()).then(function () {
-    return api('PUT', 'bapp-feed-codes', { codes: codes });
+    // sync: true = serverul salvează lista și pornește sincronizarea cu lista trimisă direct
+    return api('PUT', 'bapp-feed-codes', { codes: codes, sync: true });
   }).then(function (res) {
     tech.feedCodes = codes; tech.feedRemove = {};
     renderTechFeedInfo(); renderFeedPending(); renderFeedList();
-    if (!state.syncing) {
-      toast((doneMsg ? doneMsg + ' ' : '') + fmtNum(res.count) + ' coduri în feed. Pornesc sincronizarea ca să regenerez feed-ul…');
-      setTimeout(function () { $('sync').click(); }, 800);
+    var msg = (doneMsg ? doneMsg + ' ' : '') + fmtNum(res.count) + ' coduri salvate.';
+    if (res.dispatched) {
+      watchSync(state.overview && state.overview.status ? state.overview.status.startedAt : null);
+      toast(msg + ' Sincronizarea a pornit și regenerează feed-ul (sub un minut). Îți spun aici când e gata.');
     } else {
-      toast((doneMsg ? doneMsg + ' ' : '') + fmtNum(res.count) + ' coduri în feed. Se aplică la sincronizarea în curs sau la următoarea.');
+      toast(msg + ' Sincronizarea NU a pornit: ' + (res.dispatchError || 'motiv necunoscut') + '. Apasă „Sincronizează acum”.');
     }
     return res;
   }).catch(function (e) { toast('Eroare: ' + e.message); });

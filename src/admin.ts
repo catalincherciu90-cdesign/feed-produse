@@ -6,8 +6,9 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
-import { defaultMapping, readSavedFeedCodes, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
+import { defaultMapping, readSavedFeedCodes, type SavedFeedCodes, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
+import { encodeCodesInput } from './codesInput';
 
 export interface AdminEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
@@ -60,6 +61,19 @@ async function readBody(req: Request, max = MAX_BODY): Promise<unknown> {
 }
 
 /** Întoarce un Response dacă ruta e a panoului, altfel null. */
+/** Inputurile workflow-ului: lista și categoriile, comprimate; dacă sunt prea mari, doar momentul salvării. */
+async function syncInputs(kv: KVNamespace, saved: SavedFeedCodes): Promise<Record<string, string>> {
+  const rawCats = await kv.get(KV_KEYS.bappProductCategories);
+  const categories = rawCats ? (JSON.parse(rawCats) as Record<string, string>) : {};
+  const wanted = new Set(saved.codes);
+  const own: Record<string, string> = {};
+  for (const [k, v] of Object.entries(categories)) if (wanted.has(k)) own[k] = v;
+  const inputs: Record<string, string> = { feed_codes_saved_at: String(saved.savedAt) };
+  const encoded = (await encodeCodesInput({ ...saved, categories: own })) ?? (await encodeCodesInput(saved));
+  if (encoded) inputs.feed_codes = encoded;
+  return inputs;
+}
+
 export async function handleAdmin(
   req: Request,
   env: AdminEnv,
@@ -182,10 +196,20 @@ export async function handleAdmin(
       }
 
       case 'PUT /admin/api/bapp-feed-codes': {
-        const codes = validateFeedCodes(await readBody(req, 512 * 1024));
+        const body = await readBody(req, 512 * 1024);
+        const codes = validateFeedCodes(body);
         const savedAt = Date.now();
         await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt, codes }));
-        return json({ ok: true, count: codes.length, savedAt });
+        if ((body as { sync?: unknown })?.sync !== true) return json({ ok: true, count: codes.length, savedAt });
+        // Pornește imediat sincronizarea și îi dă lista direct (fără să mai aștepte KV).
+        // Fără pauza de 60 s: o rulare nouă o înlocuiește pe cea care încă așteaptă, deci contează ultima listă.
+        try {
+          await dispatchSync(env, fetchFn, await syncInputs(kv, { savedAt, codes }));
+          await kv.put(KV_KEYS.lastDispatch, String(Date.now()), { expirationTtl: 120 });
+          return json({ ok: true, count: codes.length, savedAt, dispatched: true });
+        } catch (e) {
+          return json({ ok: true, count: codes.length, savedAt, dispatched: false, dispatchError: e instanceof Error ? e.message : String(e) });
+        }
       }
 
       case 'GET /admin/api/bapp-product-categories': {
@@ -204,10 +228,10 @@ export async function handleAdmin(
         const last = Number((await kv.get(KV_KEYS.lastDispatch)) ?? 0);
         const wait = last + SYNC_COOLDOWN_MS - Date.now();
         if (wait > 0) return error(`Sincronizarea a fost pornită acum câteva secunde. Mai încearcă în ${Math.ceil(wait / 1000)} s.`, 429);
-        // Momentul ultimei salvări a listei /date-tehnice.xml: sincronizarea așteaptă până o vede
-        // (scrierea e vizibilă imediat aici, dar la serverul GitHub poate ajunge cu până la ~60 s întârziere).
-        const codes = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
-        await dispatchSync(env, fetchFn, { feed_codes_saved_at: String(codes?.savedAt ?? 0) });
+        // Lista /date-tehnice.xml pleacă odată cu comanda: aici scrierea e vizibilă imediat,
+        // dar la serverul GitHub ar putea ajunge prin KV cu până la ~60 s întârziere.
+        const saved = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+        await dispatchSync(env, fetchFn, saved ? await syncInputs(kv, saved) : undefined);
         const requestedAt = new Date().toISOString();
         // expirationTtl minim acceptat de KV e 60 de secunde
         await kv.put(KV_KEYS.lastDispatch, String(Date.now()), { expirationTtl: 120 });

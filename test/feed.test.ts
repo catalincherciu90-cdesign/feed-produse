@@ -1,3 +1,4 @@
+import { encodeCodesInput } from '../src/codesInput';
 import { describe, expect, it, vi } from 'vitest';
 import { CelClient } from '../src/cel';
 import { bigImageUrl, buildCelFeed, celStock, celStockFor, collapseDuplicateTags, priceWithGreenTax } from '../src/celFeed';
@@ -460,6 +461,19 @@ describe('runSync: feed cu date tehnice', () => {
     expect(sleeps).toHaveLength(2);
     expect(s.techFeed).toMatchObject({ codes: 1, products: 1 });
     expect(kv.store.get(KV_KEYS.techFeed)).toContain('0012');
+    vi.unstubAllGlobals();
+  });
+
+  it('folosește lista primită direct de la panou, chiar dacă KV încă are lista veche', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify([]));
+    const input = await encodeCodesInput({ savedAt: 900, codes: ['0012'], categories: { '0012': 'Din panou' } });
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
+    const env = { ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '', FEED_CODES_INPUT: input!, EXPECT_FEED_CODES_SAVED_AT: '900' };
+    const s = await runSync(loadConfig(env as Env), kv, new Date(), { sleep: async () => { throw new Error('nu trebuie să aștepte'); } });
+    expect(s.techFeed).toMatchObject({ from: 'panou', codes: 1, products: 1 });
+    expect(kv.store.get(KV_KEYS.techFeed)).toContain('<Category><![CDATA[Din panou]]></Category>');
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappFeedCodes)!)).toEqual({ savedAt: 900, codes: ['0012'] }); // KV primește lista
     vi.unstubAllGlobals();
   });
 

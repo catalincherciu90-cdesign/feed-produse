@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { handleAdmin } from '../src/admin';
 import { celDecision, clientDecision } from '../src/decisions';
 import { KV_KEYS } from '../src/kv';
+import { decodeCodesInput } from '../src/codesInput';
 import { parseOverrides, validateOverride, validateSettings } from '../src/rules';
 
 class FakeKV {
@@ -188,6 +189,47 @@ describe('butonul Sincronizează acum', () => {
     const res = await handleAdmin(req, { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN, GH_DISPATCH_TOKEN: 'gh' }, url, f as unknown as typeof fetch);
     expect(res!.status).toBe(401);
     expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('salvarea listei /date-tehnice.xml pornește sincronizarea cu lista inclusă', () => {
+  function putCodes(kv: FakeKV, body: unknown, fetchFn: typeof fetch) {
+    const env = { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN, GH_DISPATCH_TOKEN: 'gh', GH_REPO: 'o/r', GH_WORKFLOW: 'sync.yml', GH_REF: 'main' };
+    const url = new URL('https://x.workers.dev/admin/api/bapp-feed-codes');
+    const req = new Request(url, { method: 'PUT', headers: { Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(body) });
+    return handleAdmin(req, env, url, fetchFn) as Promise<Response>;
+  }
+
+  it('trimite workflow-ului codurile și categoriile lor, chiar imediat după altă sincronizare', async () => {
+    const kv = new FakeKV();
+    kv.store.set(KV_KEYS.bappProductCategories, JSON.stringify({ 'BR-1': 'Cat A', 'BR-X': 'Alta' }));
+    kv.store.set(KV_KEYS.lastDispatch, String(Date.now())); // pauza de 60 s nu se aplică la salvare
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    const res = (await (await putCodes(kv, { codes: ['BR-1', 'BR-2'], sync: true }, f as unknown as typeof fetch)).json()) as { dispatched: boolean; savedAt: number };
+    expect(res.dispatched).toBe(true);
+    const body = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.inputs.feed_codes_saved_at).toBe(String(res.savedAt));
+    expect(await decodeCodesInput(body.inputs.feed_codes)).toEqual({ savedAt: res.savedAt, codes: ['BR-1', 'BR-2'], categories: { 'BR-1': 'Cat A' } });
+  });
+
+  it('salvează lista chiar dacă GitHub refuză pornirea și spune de ce', async () => {
+    const kv = new FakeKV();
+    const f = vi.fn(async () => new Response('nu', { status: 401 }));
+    const res = (await (await putCodes(kv, { codes: ['BR-1'], sync: true }, f as unknown as typeof fetch)).json()) as { ok: boolean; dispatched: boolean; dispatchError: string };
+    expect(res).toMatchObject({ ok: true, dispatched: false });
+    expect(res.dispatchError).toMatch(/HTTP 401/);
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappFeedCodes)!).codes).toEqual(['BR-1']);
+  });
+
+  it('butonul Sincronizează acum trimite și el lista salvată', async () => {
+    const kv = new FakeKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt: 7, codes: ['BR-5'] }));
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    const env = { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN, GH_DISPATCH_TOKEN: 'gh', GH_REPO: 'o/r', GH_WORKFLOW: 'sync.yml', GH_REF: 'main' };
+    const url = new URL('https://x.workers.dev/admin/api/sync');
+    await handleAdmin(new Request(url, { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` } }), env, url, f as unknown as typeof fetch);
+    const body = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect((await decodeCodesInput(body.inputs.feed_codes))?.codes).toEqual(['BR-5']);
   });
 });
 

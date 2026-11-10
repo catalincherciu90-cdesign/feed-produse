@@ -10,6 +10,11 @@ on:
         required: false
         default: "0"
         type: string
+      feed_codes:
+        description: "Trimis de panou: lista de coduri pentru /date-tehnice.xml, comprimată (lasă gol)"
+        required: false
+        default: ""
+        type: string
 
 # Nu pornește o rulare nouă cât timp cea anterioară încă rulează.
 concurrency:
@@ -63,6 +68,7 @@ jobs:
           CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           BAPP_FEED_URL: ${{ secrets.BAPP_FEED_URL }} # feed-ul de atribute Braytron (opțional)
+          FEED_CODES_INPUT: ${{ inputs.feed_codes }} # lista de coduri trimisă de panou
           EXPECT_FEED_CODES_SAVED_AT: ${{ inputs.feed_codes_saved_at }} # sincronizarea așteaptă lista salvată în panou
 
           # Reguli

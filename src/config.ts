@@ -45,6 +45,7 @@ export interface Env {
   // Date tehnice și poze de la producător (bapp.ro / Braytron) pentru importul în Teamshare
   BAPP_FEED_URL?: string; // secret: linkul feed-ului de atribute
   BAPP_CODE_PREFIX?: string; // implicit BR-: prefixul codurilor tale față de codurile producătorului
+  FEED_CODES_INPUT?: string; // trimis de panou: lista de coduri, comprimată (vezi codesInput.ts)
   EXPECT_FEED_CODES_SAVED_AT?: string; // trimis de panou: momentul (ms) ultimei salvări a listei /date-tehnice.xml
 
   // Catalog Facebook (Meta Commerce Manager): /facebook.xml
@@ -78,7 +79,7 @@ export interface Config {
   celPriceWithTaxField?: string;
   celFeedDropFields: string[];
   facebook: { enabled: boolean; shopName: string; shopUrl: string; currency: string };
-  bapp: { url?: string; codePrefix: string; expectCodesSavedAt: number };
+  bapp: { url?: string; codePrefix: string; expectCodesSavedAt: number; codesInput?: string };
 }
 
 function num(value: string | undefined, fallback: number): number {
@@ -144,6 +145,7 @@ export function loadConfig(env: Env): Config {
       url: opt(env.BAPP_FEED_URL),
       codePrefix: env.BAPP_CODE_PREFIX ?? 'BR-',
       expectCodesSavedAt: Number(opt(env.EXPECT_FEED_CODES_SAVED_AT) ?? 0) || 0,
+      codesInput: opt(env.FEED_CODES_INPUT),
     },
     facebook: {
       enabled: bool(env.FB_FEED_ENABLED, false),
