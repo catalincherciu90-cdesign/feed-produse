@@ -447,7 +447,7 @@ function load(fromLogin) {
     state.overview = ov; state.overrides = ov.overrides || {};
     if (fromLogin) store(false, state.token);
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-    renderStatus(); renderSettings(); renderOverrides();
+    renderStatus(); renderSettings(); renderOverrides(); loadAutoSync();
     if (!$('tab-tech').classList.contains('hidden')) loadTech(true);
     return loadProducts(0);
   }).catch(function (e) {
@@ -537,6 +537,40 @@ function galleryStat() {
   return { value: fmtNum(none), hint: 'din ' + fmtNum(rows.length) + ' produse' };
 }
 
+// ---------- Sincronizare automată ----------
+state.autoSync = null; // { hours, options, state }
+function hoursLabel(h) { return h === 0 ? 'oprită' : h === 1 ? 'în fiecare oră' : 'la fiecare ' + h + ' ore'; }
+function loadAutoSync() {
+  return api('GET', 'auto-sync').then(function (r) { state.autoSync = r; renderStatus(); }).catch(function () {});
+}
+function autoSyncBox() {
+  var a = state.autoSync;
+  var box = el('div', { class: 'alert info', style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' });
+  box.appendChild(el('strong', { text: 'Sincronizare automată:' }));
+  if (!a) { box.appendChild(document.createTextNode(' se încarcă…')); return box; }
+  var sel = el('select', { id: 'auto-sync-hours' });
+  (a.options || []).forEach(function (h) {
+    var o = el('option', { value: String(h), text: hoursLabel(h) });
+    if (h === a.hours) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', function () {
+    var h = Number(sel.value); sel.disabled = true;
+    api('PUT', 'auto-sync', { hours: h }).then(function () {
+      a.hours = h;
+      toast(h ? 'Sincronizarea automată rulează ' + hoursLabel(h) + '. Prima pornire: în cel mult o oră.' : 'Sincronizarea automată e oprită. Rămâne butonul „Sincronizează acum”.');
+    }).catch(function (e) { toast('Eroare: ' + e.message); }).then(function () { sel.disabled = false; renderStatus(); });
+  });
+  box.appendChild(sel);
+  var st = a.state || {};
+  var info = st.lastAt ? 'Ultima pornire automată: ' + fmtTime(st.lastAt) + ' (' + ago(st.lastAt) + ').' : (a.hours ? 'Încă nu a pornit automat; Cloudflare verifică în fiecare oră, la minutul 17.' : '');
+  if (info) box.appendChild(el('span', { class: 'muted small', text: info }));
+  if (st.error && st.lastTryAt && (!st.lastAt || st.lastTryAt > st.lastAt)) {
+    box.appendChild(el('span', { class: 'small', style: 'color:var(--bad, #b42318)', text: 'Ultima încercare (' + ago(st.lastTryAt) + ') a eșuat: ' + st.error }));
+  }
+  return box;
+}
+
 function renderStatus() {
   var root = $('tab-status'); clear(root);
   var ov = state.overview || {};
@@ -551,10 +585,11 @@ function renderStatus() {
     el('span', { class: 'muted small', text: fmtTime(st.startedAt) + ' (' + ago(st.startedAt) + ')' })
   ]);
   root.appendChild(head);
+  root.appendChild(autoSyncBox());
 
   var mins = st.startedAt ? (Date.now() - new Date(st.startedAt).getTime()) / 60000 : 0;
   if (state.syncing) root.appendChild(el('div', { class: 'alert info', text: 'Sincronizare în curs, pornită ' + ago(new Date(state.syncing.since).toISOString()) + '. Pagina se actualizează singură când se termină.' }));
-  else if (mins > 24 * 60) root.appendChild(el('div', { class: 'alert warn', text: 'Datele sunt mai vechi de o zi. Stocul de pe CEL și din feed-ul clienților e cel de la ultima sincronizare. Apasă „Sincronizează acum”.' }));
+  else if (mins > 24 * 60) root.appendChild(el('div', { class: 'alert warn', text: 'Datele sunt mai vechi de o zi. Stocul de pe CEL și din feed-ul clienților e cel de la ultima sincronizare. Apasă „Sincronizează acum” și verifică mai sus sincronizarea automată.' }));
   else if (mins > 60) root.appendChild(el('div', { class: 'alert info', text: 'Datele sunt din ' + ago(st.startedAt) + '. Apasă „Sincronizează acum” ca să actualizezi stocul pe CEL și la clienți.' }));
   if (st.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare: ' + st.error }));
   if (st.cel && st.cel.error) root.appendChild(el('div', { class: 'alert bad', text: 'Eroare API CEL: ' + st.cel.error }));

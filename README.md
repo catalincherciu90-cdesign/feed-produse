@@ -25,7 +25,8 @@ feed XML ──► GitHub Actions ──► API CEL.ro (stoc, opțional)
 
 ### Limite de știut
 
-- **Sincronizarea e manuală.** Stocul de pe CEL și din feed-ul clienților e cel de la ultima apăsare a butonului. Panoul arată cât de vechi sunt datele și te avertizează după o zi.
+- **Sincronizarea e automată** (implicit în fiecare oră) și se poate porni oricând cu butonul. Intervalul se alege în panou, tab-ul **Status** (oprită, 1, 2, 3, 4, 6, 8, 12 sau 24 de ore). Cloudflare rulează Worker-ul în fiecare oră, la minutul 17 (Cron Trigger, gratuit), iar Worker-ul pornește sincronizarea doar dacă a trecut intervalul de la ultima rulare, manuală sau automată. Ca butonul, are nevoie de `GH_DISPATCH_TOKEN`; dacă pornirea eșuează, panoul arată eroarea.
+- O sincronizare scrie ~10 valori în Cloudflare KV; în fiecare oră înseamnă ~250 din cele 1.000 de scrieri gratuite pe zi.
 - Butonul are nevoie de secretul `GH_DISPATCH_TOKEN` (vezi mai jos). Fără el, sincronizarea se poate porni doar din GitHub: **Actions > Sincronizare feed > Run workflow**.
 - Programarea automată din GitHub (`on: schedule`) nu a pornit deloc în teste, iar în 2026 există multe raportări de rulări programate pierdute ([discuție GitHub](https://github.com/orgs/community/discussions/185355)). De aceea nu se folosește.
 - Repoul e public, deci codul se vede. Datele sensibile (link-ul feed-ului, parola CEL, token-urile) stau în **Secrets** și nu apar nicăieri.

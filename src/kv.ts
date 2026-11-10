@@ -19,6 +19,8 @@ export const KV_KEYS = {
   bappData: 'bapp:data', // date tehnice și poze de la producător (JSON compact)
   bappHash: 'bapp:hash', // amprenta ultimelor date scrise (scriem doar dacă s-au schimbat)
   bappMapping: 'admin:bapp-mapping', // maparea atribut -> coloană Teamshare și traducerile
+  autoSync: 'admin:auto-sync', // intervalul sincronizării automate, ales în panou
+  autoSyncState: 'admin:auto-sync-state', // ultima pornire automată și eroarea, dacă a fost
   bappFeedCodes: 'admin:bapp-feed-codes', // codurile alese pentru /date-tehnice.xml
   bappProductCategories: 'admin:bapp-product-categories', // categoria aleasă pe produs (cod -> categorie)
   techFeed: 'feed:date-tehnice.xml', // feed XML cu date tehnice și poze pentru importul în Teamshare

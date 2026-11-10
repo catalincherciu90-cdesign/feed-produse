@@ -13,6 +13,11 @@ GH_REPO = "catalincherciu90-cdesign/feed-produse"
 GH_WORKFLOW = "sync.yml"
 GH_REF = "claude/happy-cray-ubjmi1"
 
+# Sincronizare automată (gratuit): Cloudflare rulează Worker-ul în fiecare oră, la minutul 17;
+# Worker-ul pornește sincronizarea doar dacă a trecut intervalul ales în panou (tab Status).
+[triggers]
+crons = ["17 * * * *"]
+
 [[kv_namespaces]]
 binding = "FEED_KV"
 id = "PUNE_AICI_ID_KV"

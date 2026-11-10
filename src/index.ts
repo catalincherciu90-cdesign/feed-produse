@@ -1,9 +1,11 @@
 /**
  * Worker Cloudflare (plan gratuit): servește feed-urile, statusul și panoul de admin (/admin).
  * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
- * Sincronizarea se pornește manual, din panou (butonul „Sincronizează acum”, src/trigger.ts).
+ * Sincronizarea pornește din panou (butonul „Sincronizează acum”) sau automat: Cloudflare rulează
+ * scheduled() în fiecare oră, iar Worker-ul pornește workflow-ul când a trecut intervalul ales (src/autoSync.ts).
  */
 import { handleAdmin } from './admin';
+import { runAutoSync } from './autoSync';
 import { KV_KEYS } from './kv';
 import type { TriggerEnv } from './trigger';
 
@@ -28,6 +30,10 @@ function tokenFrom(req: Request, url: URL): string {
 }
 
 export default {
+  async scheduled(controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runAutoSync(env, controller.scheduledTime).then((r) => console.log('sincronizare automată:', r)));
+  },
+
   async fetch(req: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(req.url);
 

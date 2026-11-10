@@ -6,9 +6,10 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
-import { defaultMapping, readSavedFeedCodes, type SavedFeedCodes, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
+import { defaultMapping, readSavedFeedCodes, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
-import { encodeCodesInput } from './codesInput';
+import { syncInputs } from './syncInputs';
+import { AUTO_SYNC_HOURS, readAutoSync, readAutoSyncState, validateAutoSync } from './autoSync';
 
 export interface AdminEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
@@ -61,19 +62,6 @@ async function readBody(req: Request, max = MAX_BODY): Promise<unknown> {
 }
 
 /** Întoarce un Response dacă ruta e a panoului, altfel null. */
-/** Inputurile workflow-ului: lista și categoriile, comprimate; dacă sunt prea mari, doar momentul salvării. */
-async function syncInputs(kv: KVNamespace, saved: SavedFeedCodes): Promise<Record<string, string>> {
-  const rawCats = await kv.get(KV_KEYS.bappProductCategories);
-  const categories = rawCats ? (JSON.parse(rawCats) as Record<string, string>) : {};
-  const wanted = new Set(saved.codes);
-  const own: Record<string, string> = {};
-  for (const [k, v] of Object.entries(categories)) if (wanted.has(k)) own[k] = v;
-  const inputs: Record<string, string> = { feed_codes_saved_at: String(saved.savedAt) };
-  const encoded = (await encodeCodesInput({ ...saved, categories: own })) ?? (await encodeCodesInput(saved));
-  if (encoded) inputs.feed_codes = encoded;
-  return inputs;
-}
-
 export async function handleAdmin(
   req: Request,
   env: AdminEnv,
@@ -221,6 +209,17 @@ export async function handleAdmin(
         const categories = validateProductCategories(await readBody(req, 1024 * 1024));
         await kv.put(KV_KEYS.bappProductCategories, JSON.stringify(categories));
         return json({ ok: true, count: Object.keys(categories).length });
+      }
+
+      case 'GET /admin/api/auto-sync': {
+        const [settings, autoState] = await Promise.all([readAutoSync(kv), readAutoSyncState(kv)]);
+        return json({ ...settings, options: AUTO_SYNC_HOURS, state: autoState });
+      }
+
+      case 'PUT /admin/api/auto-sync': {
+        const settings = validateAutoSync(await readBody(req, 1024));
+        await kv.put(KV_KEYS.autoSync, JSON.stringify(settings));
+        return json({ ok: true, ...settings });
       }
 
       case 'POST /admin/api/sync': {

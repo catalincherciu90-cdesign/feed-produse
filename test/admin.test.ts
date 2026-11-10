@@ -233,6 +233,18 @@ describe('salvarea listei /date-tehnice.xml pornește sincronizarea cu lista inc
   });
 });
 
+describe('API sincronizare automată', () => {
+  it('implicit în fiecare oră; se poate schimba și opri', async () => {
+    const { kv, call } = setup();
+    expect(await (await call('GET', '/admin/api/auto-sync')).json()).toMatchObject({ hours: 1, state: {} });
+    expect((await call('PUT', '/admin/api/auto-sync', { hours: 6 })).status).toBe(200);
+    expect(JSON.parse(kv.store.get(KV_KEYS.autoSync)!)).toEqual({ hours: 6 });
+    expect((await call('PUT', '/admin/api/auto-sync', { hours: 0 })).status).toBe(200);
+    expect((await call('PUT', '/admin/api/auto-sync', { hours: 7 })).status).toBe(400);
+    expect(await (await call('GET', '/admin/api/auto-sync')).json()).toMatchObject({ hours: 0 });
+  });
+});
+
 describe('API mapare date tehnice', () => {
   it('întoarce maparea propusă, salvează una validă și respinge coloane inexistente', async () => {
     const { kv, call } = setup();
