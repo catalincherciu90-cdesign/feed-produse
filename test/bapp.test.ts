@@ -137,6 +137,12 @@ describe('feed /date-tehnice.xml', () => {
     expect(first).toContain('<Culoarea_corpului_P39493><![CDATA[Culoarea corpului: - P39493]]></Culoarea_corpului_P39493>');
   });
 
+  it('fără produse, feed-ul e gol (fără rândul de titluri singur)', () => {
+    const xml = buildTechFeedXml(buildImportTable([], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS).rows);
+    expect(xml).not.toContain('<product>');
+    expect(xml).toContain('<products>');
+  });
+
   it('validează lista de coduri', () => {
     expect(validateFeedCodes({ codes: [' A ', 'B', 'A', ''] })).toEqual(['A', 'B']);
     expect(() => validateFeedCodes({ codes: 'A' })).toThrow();

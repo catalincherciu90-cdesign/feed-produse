@@ -600,7 +600,8 @@ export function buildTechFeedXml(rows: string[][], opts: { headerRow?: boolean }
   const header = rows[0] ?? [];
   const tags = header.map(teamshareTag);
   const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<products>'];
-  if (opts.headerRow !== false && header.length) {
+  // Rândul de titluri doar dacă feed-ul are produse (altfel Teamshare ar vedea un „produs” fals).
+  if (opts.headerRow !== false && header.length && rows.length > 1) {
     lines.push('<product>');
     header.forEach((name, i) => lines.push(`<${tags[i]}>${cdataTs(name)}</${tags[i]}>`));
     lines.push('</product>');

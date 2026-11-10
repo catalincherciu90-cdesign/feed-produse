@@ -1082,6 +1082,8 @@ function renderTechFeedInfo() {
 }
 $('tech-feed-save').addEventListener('click', function () {
   var codes = techCodes(); var cur = (tech.feedCodes || []).length;
+  // O căsuță goală ar goli feed-ul: refuzăm (scoaterea produselor se face din lista „Produse în feed”).
+  if (!codes.length) return toast('Căsuța e goală. Pune codurile pe care le vrei în feed; ca să scoți produse, folosește „Scoate din feed” din listă.');
   if (cur && !tech.confirmReplace) {
     tech.confirmReplace = true; setTimeout(function () { tech.confirmReplace = false; }, 5000);
     return toast('Feed-ul are ' + fmtNum(cur) + ' coduri. Apasă din nou în 5 secunde ca să le înlocuiești cu cele ' + fmtNum(codes.length) + ' din căsuță.');
