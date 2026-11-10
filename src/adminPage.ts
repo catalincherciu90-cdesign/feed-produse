@@ -558,12 +558,12 @@ function autoSyncBox() {
     var h = Number(sel.value); sel.disabled = true;
     api('PUT', 'auto-sync', { hours: h }).then(function () {
       a.hours = h;
-      toast(h ? 'Sincronizarea automată rulează ' + hoursLabel(h) + '. Prima pornire: în cel mult o oră.' : 'Sincronizarea automată e oprită. Rămâne butonul „Sincronizează acum”.');
+      toast(h ? 'Sincronizarea automată rulează ' + hoursLabel(h) + '. Prima pornire: la următoarea verificare GitHub, în cel mult o oră.' : 'Sincronizarea automată e oprită. Rămâne butonul „Sincronizează acum”.');
     }).catch(function (e) { toast('Eroare: ' + e.message); }).then(function () { sel.disabled = false; renderStatus(); });
   });
   box.appendChild(sel);
   var st = a.state || {};
-  var info = st.lastAt ? 'Ultima pornire automată: ' + fmtTime(st.lastAt) + ' (' + ago(st.lastAt) + ').' : (a.hours ? 'Încă nu a pornit automat; Cloudflare verifică în fiecare oră, la minutul 17.' : '');
+  var info = st.lastAt ? 'Ultima pornire automată: ' + fmtTime(st.lastAt) + ' (' + ago(st.lastAt) + ').' : (a.hours ? 'Încă nu a pornit automat. GitHub verifică în fiecare oră (pe la minutul 23, uneori cu câteva minute întârziere).' : '');
   if (info) box.appendChild(el('span', { class: 'muted small', text: info }));
   if (st.error && st.lastTryAt && (!st.lastAt || st.lastTryAt > st.lastAt)) {
     box.appendChild(el('span', { class: 'small', style: 'color:var(--bad, #b42318)', text: 'Ultima încercare (' + ago(st.lastTryAt) + ') a eșuat: ' + st.error }));

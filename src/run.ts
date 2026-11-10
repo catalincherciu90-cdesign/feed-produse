@@ -5,6 +5,8 @@
 import { loadConfig, type Env } from './config';
 import { CloudflareKvRest } from './kv';
 import { runSync } from './sync';
+import { autoSyncDue, lastRunFromStatus, readAutoSync } from './autoSync';
+import { KV_KEYS } from './kv';
 
 function required(name: string): string {
   const v = process.env[name]?.trim();
@@ -14,6 +16,19 @@ function required(name: string): string {
 
 async function main(): Promise<void> {
   const kv = new CloudflareKvRest(required('CF_ACCOUNT_ID'), required('CF_KV_NAMESPACE_ID'), required('CF_API_TOKEN'));
+
+  // Rulare programată (în fiecare oră): sincronizează doar dacă a trecut intervalul ales în panou.
+  // Doar citiri din KV, deci o rulare sărită nu consumă din cele 1.000 de scrieri gratuite pe zi.
+  if (process.env.GITHUB_EVENT_NAME === 'schedule') {
+    const { hours } = await readAutoSync(kv);
+    const last = lastRunFromStatus(await kv.get(KV_KEYS.status));
+    if (!autoSyncDue(hours, last, Date.now())) {
+      const why = hours ? `ultima sincronizare a fost acum ${Math.round((Date.now() - last) / 60000)} minute, intervalul e de ${hours} ore` : 'sincronizarea automată e oprită din panou';
+      process.stdout.write(`Rulare programată sărită: ${why}.\n`);
+      return;
+    }
+    await kv.put(KV_KEYS.autoSyncState, JSON.stringify({ lastAt: new Date().toISOString(), lastTryAt: new Date().toISOString() }));
+  }
   const status = await runSync(loadConfig(process.env as unknown as Env), kv);
 
   const s = status.source;

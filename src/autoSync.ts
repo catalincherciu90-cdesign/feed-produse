@@ -1,7 +1,8 @@
 /**
- * Sincronizare automată: Cloudflare rulează Worker-ul în fiecare oră (Cron Trigger din wrangler.toml,
- * gratuit). Dacă a trecut intervalul ales în panou, Worker-ul pornește workflow-ul din GitHub,
- * exact ca butonul „Sincronizează acum” (cu lista pentru /date-tehnice.xml inclusă).
+ * Sincronizare automată: GitHub pornește workflow-ul în fiecare oră (schedule în sync.yml), iar
+ * src/run.ts verifică intervalul ales în panou și iese imediat dacă nu e momentul (autoSyncDue).
+ * runAutoSync() e varianta pentru Cloudflare Cron Trigger (Worker-ul pornește workflow-ul); acum nu e
+ * activă, pentru că planul gratuit permite 5 Cron Triggers pe cont și sunt folosite de alte proiecte.
  */
 import { readSavedFeedCodes } from './bapp';
 import { KV_KEYS } from './kv';
@@ -31,7 +32,12 @@ export function validateAutoSync(raw: unknown): AutoSyncSettings {
   return { hours: h };
 }
 
-export async function readAutoSync(kv: KVNamespace): Promise<AutoSyncSettings> {
+/** Doar citire: merge și cu KV din Worker, și cu clientul REST din GitHub Actions. */
+export interface KvReader {
+  get(key: string): Promise<string | null>;
+}
+
+export async function readAutoSync(kv: KvReader): Promise<AutoSyncSettings> {
   const raw = await kv.get(KV_KEYS.autoSync);
   if (!raw) return { hours: AUTO_SYNC_DEFAULT_HOURS };
   try {
@@ -41,13 +47,28 @@ export async function readAutoSync(kv: KVNamespace): Promise<AutoSyncSettings> {
   }
 }
 
-export async function readAutoSyncState(kv: KVNamespace): Promise<AutoSyncState> {
+export async function readAutoSyncState(kv: KvReader): Promise<AutoSyncState> {
   const raw = await kv.get(KV_KEYS.autoSyncState);
   return raw ? (JSON.parse(raw) as AutoSyncState) : {};
 }
 
-/** Marjă: cron-ul rulează la fix o dată pe oră, dar nu chiar la aceeași secundă. */
+/** Marjă: pornirile programate nu vin chiar la aceeași secundă (la GitHub pot întârzia câteva minute). */
 const TOLERANCE_MS = 10 * 60 * 1000;
+
+/** E momentul unei sincronizări automate? last = ultima rulare, de orice fel (ms). */
+export function autoSyncDue(hours: number, last: number, now: number): boolean {
+  return hours > 0 && now - last >= hours * 3600_000 - TOLERANCE_MS;
+}
+
+/** Momentul ultimei sincronizări care a rulat (din sync:status), în ms; 0 dacă nu există. */
+export function lastRunFromStatus(status: string | null): number {
+  if (!status) return 0;
+  try {
+    return Date.parse((JSON.parse(status) as { startedAt?: string }).startedAt ?? '') || 0;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Apelată de Cloudflare în fiecare oră. Întoarce ce a făcut (pentru jurnal și teste).
@@ -65,11 +86,9 @@ export async function runAutoSync(
 
   const state = await readAutoSyncState(kv);
   // ultima sincronizare care a rulat (pornită de oriunde) și ultima pornire automată
-  const status = await kv.get(KV_KEYS.status);
-  const lastRun = status ? Date.parse((JSON.parse(status) as { startedAt?: string }).startedAt ?? '') || 0 : 0;
+  const lastRun = lastRunFromStatus(await kv.get(KV_KEYS.status));
   const lastAuto = state.lastAt ? Date.parse(state.lastAt) || 0 : 0;
-  const last = Math.max(lastRun, lastAuto);
-  if (now - last < hours * 3600_000 - TOLERANCE_MS) return 'not-due';
+  if (!autoSyncDue(hours, Math.max(lastRun, lastAuto), now)) return 'not-due';
 
   const tryAt = new Date(now).toISOString();
   try {

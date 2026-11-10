@@ -74,3 +74,16 @@ describe('sincronizare automată', () => {
     expect(() => validateAutoSync({ hours: '1' })).toThrow();
   });
 });
+
+describe('verificarea din rularea programată GitHub', () => {
+  it('autoSyncDue respectă intervalul, cu marjă de 10 minute pentru întârzieri', async () => {
+    const { autoSyncDue, lastRunFromStatus } = await import('../src/autoSync');
+    expect(autoSyncDue(1, NOW - 55 * 60_000, NOW)).toBe(true);
+    expect(autoSyncDue(1, NOW - 40 * 60_000, NOW)).toBe(false);
+    expect(autoSyncDue(6, NOW - 5 * H, NOW)).toBe(false);
+    expect(autoSyncDue(0, 0, NOW)).toBe(false);
+    expect(lastRunFromStatus(null)).toBe(0);
+    expect(lastRunFromStatus('{"startedAt":"2026-11-10T12:00:00Z"}')).toBe(Date.parse('2026-11-10T12:00:00Z'));
+    expect(lastRunFromStatus('stricat')).toBe(0);
+  });
+});

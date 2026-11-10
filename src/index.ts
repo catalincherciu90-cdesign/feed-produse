@@ -1,8 +1,8 @@
 /**
  * Worker Cloudflare (plan gratuit): servește feed-urile, statusul și panoul de admin (/admin).
  * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
- * Sincronizarea pornește din panou (butonul „Sincronizează acum”) sau automat: Cloudflare rulează
- * scheduled() în fiecare oră, iar Worker-ul pornește workflow-ul când a trecut intervalul ales (src/autoSync.ts).
+ * Sincronizarea pornește din panou (butonul „Sincronizează acum”) sau automat, din GitHub (schedule
+ * în sync.yml). scheduled() de mai jos se folosește doar dacă adaugi un Cron Trigger în wrangler.toml.
  */
 import { handleAdmin } from './admin';
 import { runAutoSync } from './autoSync';

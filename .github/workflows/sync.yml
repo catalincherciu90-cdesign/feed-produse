@@ -1,8 +1,14 @@
 name: Sincronizare feed
 
-# Sincronizare manuală: pornită din panoul de admin (butonul „Sincronizează acum”)
-# sau din GitHub, cu butonul "Run workflow". Nu există rulare programată.
+# Pornește:
+#  - automat, în fiecare oră (la minutul 23); src/run.ts iese imediat dacă nu a trecut intervalul
+#    ales în panou (tab Status) sau dacă sincronizarea automată e oprită;
+#  - din panou (butonul „Sincronizează acum” sau salvarea listei pentru /date-tehnice.xml);
+#  - din GitHub, cu butonul "Run workflow".
+# GitHub poate întârzia rulările programate câteva minute, uneori mai mult, când e aglomerat.
 on:
+  schedule:
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       feed_codes_saved_at:
