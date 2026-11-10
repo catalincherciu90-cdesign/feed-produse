@@ -6,7 +6,7 @@ import { ADMIN_HTML, ADMIN_JS } from './adminPage';
 import { KV_KEYS } from './kv';
 import { LIMITS, parseOverrides, validateOverride, validateSettings, validateSku } from './rules';
 import { dispatchSync, type TriggerEnv } from './trigger';
-import { defaultMapping, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
+import { defaultMapping, readSavedFeedCodes, UNCERTAIN_RULES, validateFeedCodes, validateMapping, validateProductCategories } from './bapp';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 
 export interface AdminEnv extends TriggerEnv {
@@ -177,14 +177,15 @@ export async function handleAdmin(
       }
 
       case 'GET /admin/api/bapp-feed-codes': {
-        const saved = await kv.get(KV_KEYS.bappFeedCodes, { cacheTtl: 30 });
-        return raw(`{"codes":${saved ?? '[]'}}`);
+        const saved = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+        return json({ codes: saved?.codes ?? [], savedAt: saved?.savedAt ?? 0 });
       }
 
       case 'PUT /admin/api/bapp-feed-codes': {
         const codes = validateFeedCodes(await readBody(req, 512 * 1024));
-        await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify(codes));
-        return json({ ok: true, count: codes.length });
+        const savedAt = Date.now();
+        await kv.put(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt, codes }));
+        return json({ ok: true, count: codes.length, savedAt });
       }
 
       case 'GET /admin/api/bapp-product-categories': {
@@ -203,7 +204,10 @@ export async function handleAdmin(
         const last = Number((await kv.get(KV_KEYS.lastDispatch)) ?? 0);
         const wait = last + SYNC_COOLDOWN_MS - Date.now();
         if (wait > 0) return error(`Sincronizarea a fost pornită acum câteva secunde. Mai încearcă în ${Math.ceil(wait / 1000)} s.`, 429);
-        await dispatchSync(env, fetchFn);
+        // Momentul ultimei salvări a listei /date-tehnice.xml: sincronizarea așteaptă până o vede
+        // (scrierea e vizibilă imediat aici, dar la serverul GitHub poate ajunge cu până la ~60 s întârziere).
+        const codes = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+        await dispatchSync(env, fetchFn, { feed_codes_saved_at: String(codes?.savedAt ?? 0) });
         const requestedAt = new Date().toISOString();
         // expirationTtl minim acceptat de KV e 60 de secunde
         await kv.put(KV_KEYS.lastDispatch, String(Date.now()), { expirationTtl: 120 });

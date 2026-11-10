@@ -3,7 +3,13 @@ name: Sincronizare feed
 # Sincronizare manuală: pornită din panoul de admin (butonul „Sincronizează acum”)
 # sau din GitHub, cu butonul "Run workflow". Nu există rulare programată.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      feed_codes_saved_at:
+        description: "Trimis de panou: momentul ultimei salvări a listei pentru /date-tehnice.xml (lasă gol)"
+        required: false
+        default: "0"
+        type: string
 
 # Nu pornește o rulare nouă cât timp cea anterioară încă rulează.
 concurrency:
@@ -57,6 +63,7 @@ jobs:
           CF_KV_NAMESPACE_ID: ${{ secrets.CF_KV_NAMESPACE_ID }}
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           BAPP_FEED_URL: ${{ secrets.BAPP_FEED_URL }} # feed-ul de atribute Braytron (opțional)
+          EXPECT_FEED_CODES_SAVED_AT: ${{ inputs.feed_codes_saved_at }} # sincronizarea așteaptă lista salvată în panou
 
           # Reguli
           AVAILABLE_MIN_STOCK: "10" # feed clienți: stoc >= 10 disponibil, sub 10 indisponibil

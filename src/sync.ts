@@ -8,7 +8,7 @@ import { celDecision, celStockFor, clientDecision, hasValidPrice, type CelStockR
 import { isValidGtin } from './ean';
 import { getJson, KV_KEYS, type KVStore } from './kv';
 import { parseOverrides, validateSettings, type Overrides, type Settings } from './rules';
-import { buildImportTable, buildTechFeedXml, defaultMapping, translateValue, validateMapping, type BappData } from './bapp';
+import { buildImportTable, buildTechFeedXml, defaultMapping, readSavedFeedCodes, translateValue, validateMapping, type BappData, type SavedFeedCodes } from './bapp';
 import { parseBapp } from './bappParse';
 import { TEAMSHARE_COLUMNS } from './teamshareColumns';
 import { fetchSource, parseFeed, type Product } from './source';
@@ -214,7 +214,33 @@ async function previousCount(kv: KVStore): Promise<number> {
   return Number((await kv.get(KV_KEYS.lastCount)) ?? 0); // compatibilitate cu versiunea fără istoric
 }
 
-export async function runSync(baseConfig: Config, kv: KVStore, now = new Date()): Promise<SyncStatus> {
+export interface SyncOptions {
+  /** Pauza dintre citiri când lista din panou încă nu a ajuns (KV are întârzieri de până la ~60 s între regiuni). */
+  sleep?: (ms: number) => Promise<void>;
+  feedCodesRetries?: number;
+  feedCodesRetryMs?: number;
+}
+
+/**
+ * Citește lista pentru /date-tehnice.xml. Dacă panoul a trimis momentul ultimei salvări,
+ * așteaptă până când KV întoarce lista cel puțin la fel de nouă (altfel s-ar folosi lista veche).
+ */
+async function readFeedCodes(kv: KVStore, expectSavedAt: number, opts: SyncOptions, warnings: string[]): Promise<SavedFeedCodes | null> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const retries = opts.feedCodesRetries ?? 9;
+  const retryMs = opts.feedCodesRetryMs ?? 10_000;
+  let saved = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+  for (let i = 0; expectSavedAt > 0 && (saved?.savedAt ?? 0) < expectSavedAt && i < retries; i++) {
+    await sleep(retryMs);
+    saved = readSavedFeedCodes(await kv.get(KV_KEYS.bappFeedCodes));
+  }
+  if (expectSavedAt > 0 && (saved?.savedAt ?? 0) < expectSavedAt) {
+    warnings.push('Feed date tehnice: lista salvată acum în panou nu a ajuns încă la sincronizare; am folosit lista anterioară. Mai pornește o sincronizare peste un minut.');
+  }
+  return saved;
+}
+
+export async function runSync(baseConfig: Config, kv: KVStore, now = new Date(), opts: SyncOptions = {}): Promise<SyncStatus> {
   const status: SyncStatus = { startedAt: now.toISOString(), ok: false };
   const warnings: string[] = [];
   try {
@@ -340,7 +366,8 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date())
     }
 
     // 2b4. Feed cu date tehnice pentru importul în Teamshare: doar codurile alese în panou
-    const feedCodes = await getJson<string[]>(kv, KV_KEYS.bappFeedCodes);
+    const savedCodes = await readFeedCodes(kv, config.bapp.expectCodesSavedAt, opts, warnings);
+    const feedCodes = savedCodes?.codes;
     if (feedCodes) {
       try {
         if (!bappData) bappData = await getJson<BappData>(kv, KV_KEYS.bappData); // ultima versiune bună

@@ -10,7 +10,11 @@ export interface TriggerEnv {
   GH_REF?: string; // branch-ul pe care rulează workflow-ul
 }
 
-export async function dispatchSync(env: TriggerEnv, fetchFn: typeof fetch = (i, init) => fetch(i, init)): Promise<void> {
+export async function dispatchSync(
+  env: TriggerEnv,
+  fetchFn: typeof fetch = (i, init) => fetch(i, init),
+  inputs?: Record<string, string>,
+): Promise<void> {
   const token = env.GH_DISPATCH_TOKEN?.trim();
   if (!token) throw new Error('GH_DISPATCH_TOKEN nu este setat pe Worker. Pune secretul în GitHub și rulează din nou „Deploy Worker”.');
   const repo = env.GH_REPO?.trim();
@@ -28,7 +32,7 @@ export async function dispatchSync(env: TriggerEnv, fetchFn: typeof fetch = (i, 
       'User-Agent': 'feed-produse-worker',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ref }),
+    body: JSON.stringify(inputs ? { ref, inputs } : { ref }),
   });
   // GitHub răspunde 204 (fără conținut) sau 200 la succes.
   if (res.status !== 204 && res.status !== 200) {

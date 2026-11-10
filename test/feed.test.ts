@@ -444,6 +444,35 @@ describe('runSync: feed cu date tehnice', () => {
     vi.unstubAllGlobals();
   });
 
+  it('așteaptă lista salvată acum în panou când KV încă întoarce lista veche', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify([])); // lista veche, goală
+    let reads = 0;
+    const origGet = kv.get.bind(kv);
+    kv.get = async (key: string) => {
+      if (key === KV_KEYS.bappFeedCodes && ++reads === 3) kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt: 500, codes: ['0012'] }));
+      return origGet(key);
+    };
+    const sleeps: number[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
+    const env = { ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '', EXPECT_FEED_CODES_SAVED_AT: '500' };
+    const s = await runSync(loadConfig(env as Env), kv, new Date(), { sleep: async (ms) => void sleeps.push(ms), feedCodesRetryMs: 1 });
+    expect(sleeps).toHaveLength(2);
+    expect(s.techFeed).toMatchObject({ codes: 1, products: 1 });
+    expect(kv.store.get(KV_KEYS.techFeed)).toContain('0012');
+    vi.unstubAllGlobals();
+  });
+
+  it('avertizează dacă lista nouă nu ajunge deloc', async () => {
+    const kv = new MemKV();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify({ savedAt: 100, codes: [] }));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(url.includes('bapp') ? BAPP : SAMPLE)));
+    const env = { ...baseEnv, CEL_ENABLED: 'false', BAPP_FEED_URL: 'https://bapp.ro/f', BAPP_CODE_PREFIX: '', EXPECT_FEED_CODES_SAVED_AT: '500' };
+    const s = await runSync(loadConfig(env as Env), kv, new Date(), { sleep: async () => {}, feedCodesRetries: 3 });
+    expect(s.warnings?.join(' ')).toMatch(/nu a ajuns încă/);
+    vi.unstubAllGlobals();
+  });
+
   it('folosește ultimele date bune din KV dacă feed-ul producătorului nu răspunde', async () => {
     const kv = new MemKV();
     kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify(['0012']));

@@ -15,6 +15,13 @@ describe('dispatchSync', () => {
     expect(JSON.parse(init.body as string)).toEqual({ ref: 'claude/happy-cray-ubjmi1' });
   });
 
+  it('trimite și parametrii workflow-ului (momentul salvării listei)', async () => {
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    await dispatchSync(env, f as unknown as typeof fetch, { feed_codes_saved_at: '123' });
+    const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ ref: 'claude/happy-cray-ubjmi1', inputs: { feed_codes_saved_at: '123' } });
+  });
+
   it('dă o eroare clară fără token sau când GitHub refuză', async () => {
     await expect(dispatchSync({ ...env, GH_DISPATCH_TOKEN: '' })).rejects.toThrow(/GH_DISPATCH_TOKEN/);
     const f = vi.fn(async () => new Response('{"message":"Bad credentials"}', { status: 401 }));

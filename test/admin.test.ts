@@ -219,11 +219,19 @@ describe('API mapare date tehnice', () => {
 describe('API listă coduri pentru feed', () => {
   it('salvează și întoarce lista', async () => {
     const { kv, call } = setup();
-    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: [] });
+    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: [], savedAt: 0 });
     const r = await call('PUT', '/admin/api/bapp-feed-codes', { codes: ['BR-1', 'BR-2', 'BR-1'] });
-    expect(await r.json()).toEqual({ ok: true, count: 2 });
-    expect(JSON.parse(kv.store.get(KV_KEYS.bappFeedCodes)!)).toEqual(['BR-1', 'BR-2']);
-    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: ['BR-1', 'BR-2'] });
+    const body = (await r.json()) as { ok: boolean; count: number; savedAt: number };
+    expect(body).toMatchObject({ ok: true, count: 2 });
+    expect(body.savedAt).toBeGreaterThan(0);
+    expect(JSON.parse(kv.store.get(KV_KEYS.bappFeedCodes)!)).toEqual({ savedAt: body.savedAt, codes: ['BR-1', 'BR-2'] });
+    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: ['BR-1', 'BR-2'], savedAt: body.savedAt });
+  });
+
+  it('citește și lista salvată în formatul vechi (doar coduri)', async () => {
+    const { kv, call } = setup();
+    kv.store.set(KV_KEYS.bappFeedCodes, JSON.stringify(['BR-9']));
+    expect(await (await call('GET', '/admin/api/bapp-feed-codes')).json()).toEqual({ codes: ['BR-9'], savedAt: 0 });
   });
 });
 

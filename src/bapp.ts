@@ -637,6 +637,23 @@ export function validateFeedCodes(raw: unknown): string[] {
   return out;
 }
 
+/** Lista salvată pentru /date-tehnice.xml: { savedAt, codes } (versiunile vechi salvau doar lista). */
+export interface SavedFeedCodes {
+  savedAt: number;
+  codes: string[];
+}
+
+export function readSavedFeedCodes(raw: string | null): SavedFeedCodes | null {
+  if (raw === null) return null;
+  const v = JSON.parse(raw) as unknown;
+  if (Array.isArray(v)) return { savedAt: 0, codes: v.filter((c): c is string => typeof c === 'string') };
+  const o = v as { savedAt?: unknown; codes?: unknown };
+  return {
+    savedAt: typeof o?.savedAt === 'number' ? o.savedAt : 0,
+    codes: Array.isArray(o?.codes) ? o.codes.filter((c): c is string => typeof c === 'string') : [],
+  };
+}
+
 /** Validează categoriile alese pe produs (cod -> categorie). */
 export function validateProductCategories(raw: unknown): Record<string, string> {
   const c = (raw as { categories?: unknown })?.categories;
