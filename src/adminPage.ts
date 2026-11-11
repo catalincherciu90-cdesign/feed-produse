@@ -91,6 +91,14 @@ dialog { border: 1px solid var(--border); border-radius: var(--radius); backgrou
 dialog::backdrop { background: rgba(0,0,0,.45); }
 .login { max-width: 380px; margin: 12vh auto; }
 .hidden { display: none !important; }
+.cat-pick { position: relative; min-width: 240px; max-width: 360px; }
+.cat-pick input { padding-right: 28px; }
+.cat-pick .clear { position: absolute; right: 6px; top: 6px; background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px; }
+.cat-pick ul { position: static; margin: 2px 0 0; padding: 4px 0; list-style: none; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; max-height: 260px; overflow-y: auto; box-shadow: 0 6px 18px rgba(0,0,0,.15); }
+.cat-pick li { padding: 6px 10px; cursor: pointer; font-size: 13px; }
+.cat-pick li .top { color: var(--muted); }
+.cat-pick li.active, .cat-pick li:hover { background: var(--bg); }
+.cat-pick li.empty { color: var(--muted); cursor: default; }
 .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 8px; z-index: 20; max-width: calc(100vw - 32px); }
 @media (max-width: 640px) {
   .stat .value { font-size: 22px; }
@@ -1334,6 +1342,58 @@ function categorySelect(value, firstLabel, attrs) {
   return sel;
 }
 
+/**
+ * Căsuță de căutare pentru categoria unui produs: scrii o parte din nume (fără diacritice, oricâte
+ * cuvinte, în orice ordine) și alegi din categoriile site-ului. Gol = propunerea / categoria actuală.
+ * onPick(valoare) se apelează doar cu o categorie din listă sau cu '' (golire).
+ */
+function categoryPicker(value, emptyLabel, onPick) {
+  var cats = (tech.data && tech.data.siteCategories) || [];
+  var label = function (c) { return c.replace(/\//g, ' › '); };
+  var wrap = el('div', { class: 'cat-pick' });
+  var input = el('input', { type: 'text', class: 'prod-cat', autocomplete: 'off', spellcheck: 'false', placeholder: emptyLabel.replace(/\//g, ' › ') + ' (scrie ca să cauți)', 'aria-label': 'Caută categoria' });
+  input.value = value ? label(value) : '';
+  var list = el('ul', { class: 'hidden', role: 'listbox' });
+  var clearBtn = el('button', { class: 'clear', type: 'button', title: 'Golește (revine la: ' + emptyLabel + ')', text: '×' });
+  if (!value) clearBtn.classList.add('hidden');
+  var items = [], active = -1;
+  function matches(q) {
+    var words = normalize(q).split(/[\s›\/]+/).filter(Boolean);
+    if (!words.length) return cats.slice(0, 60);
+    return cats.filter(function (c) { var n = normalize(c); return words.every(function (w) { return n.indexOf(w) >= 0; }); }).slice(0, 60);
+  }
+  function show() {
+    clear(list); items = matches(input.value === (value ? label(value) : '') ? '' : input.value); active = items.length ? 0 : -1;
+    if (!items.length) list.appendChild(el('li', { class: 'empty', text: 'Nicio categorie nu conține textul scris' }));
+    items.forEach(function (c, i) {
+      var parts = c.split('/'); var last = parts.pop();
+      var li = el('li', { role: 'option', class: i === active ? 'active' : '' }, [
+        parts.length ? el('span', { class: 'top', text: parts.join(' › ') + ' › ' }) : null, last
+      ]);
+      // mousedown, nu click: altfel câmpul pierde focusul și lista dispare înainte de alegere
+      li.addEventListener('mousedown', function (e) { e.preventDefault(); pick(c); });
+      list.appendChild(li);
+    });
+    list.classList.remove('hidden');
+  }
+  function hide() { list.classList.add('hidden'); }
+  function pick(c) { hide(); if (c === value) { input.value = label(value); return; } onPick(c); }
+  function highlight() { Array.prototype.forEach.call(list.children, function (li, i) { li.classList.toggle('active', i === active); if (i === active) li.scrollIntoView({ block: 'nearest' }); }); }
+  input.addEventListener('focus', function () { input.select(); show(); });
+  input.addEventListener('input', show);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' && items.length) { e.preventDefault(); active = Math.min(active + 1, items.length - 1); highlight(); }
+    else if (e.key === 'ArrowUp' && items.length) { e.preventDefault(); active = Math.max(active - 1, 0); highlight(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (active >= 0 && items[active]) pick(items[active]); }
+    else if (e.key === 'Escape') { input.value = value ? label(value) : ''; hide(); input.blur(); }
+  });
+  // La ieșire fără alegere, textul revine la categoria salvată (nu rămâne o categorie inventată).
+  input.addEventListener('blur', function () { hide(); input.value = value ? label(value) : ''; });
+  clearBtn.addEventListener('click', function () { hide(); if (value) onPick(''); });
+  wrap.appendChild(input); wrap.appendChild(clearBtn); wrap.appendChild(list);
+  return wrap;
+}
+
 function categoryInput(p, opts) {
   var mode = tech.mapping.categoryMode || 'new';
   var box = el('div', { class: 'small' });
@@ -1342,14 +1402,11 @@ function categoryInput(p, opts) {
   var proposed = p.suggested || proposedCategory(p.family);
   var placeholder = p.existing && mode === 'new' ? 'rămâne cea actuală' : (proposed || 'alege categoria');
   var first = p.existing && mode === 'new' ? 'Rămâne cea actuală' : (proposed ? 'Propusă: ' + proposed : '— alege categoria —');
-  var input = categorySelect(chosen, first, { class: 'prod-cat', style: 'min-width:240px;max-width:340px' });
   void placeholder;
-  input.addEventListener('change', function () {
-    var v = input.value.trim();
+  box.appendChild(categoryPicker(chosen, first, function (v) {
     if (v) tech.productCategories[p.code] = v; else delete tech.productCategories[p.code];
     tech.catDirty = true; updateCatState(); renderFeedList(); renderFeedPending();
-  });
-  box.appendChild(input);
+  }));
   var marks = el('div', { class: 'row', style: 'gap:4px;margin-top:3px' });
   if (!p.existing && !(opts && opts.inFeedList)) marks.appendChild(badge(['produs nou', 'b-info'])); // în listă apare deja lângă cod
   if (chosen) marks.appendChild(badge(['aleasă de tine', 'b-ok']));

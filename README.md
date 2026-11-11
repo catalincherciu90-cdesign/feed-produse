@@ -108,7 +108,7 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 
 **Codul produsului în feed:** poți scrie fie codul tău, fie codul Braytron. Un produs care există deja pe site apare cu codul tău legat de el. Un produs nou primește automat prefixul din Mapare (implicit `BR-`): `BD60-03280` devine `BR-BD60-03280`, iar codul Braytron rămâne în coloana „Cod Furnizor”.
 
-**Categoria pe produs:** în lista „Produse în feed”, fiecare produs are o listă cu categoriile site-ului. Alegi categoria, apoi **„Salvează și regenerează feed-ul”** din bara galbenă (sau „Renunță”). La un produs existent, o categorie aleasă aici înlocuiește la import categoria de pe site; „Rămâne cea actuală” nu o schimbă.
+**Categoria pe produs:** în lista „Produse în feed”, fiecare produs are o căsuță de căutare a categoriei: scrii o parte din nume (de exemplu „sina mag”; fără diacritice, cuvintele în orice ordine) și alegi din categoriile site-ului; × golește alegerea. Alegi categoria, apoi **„Salvează și regenerează feed-ul”** din bara galbenă (sau „Renunță”). La un produs existent, o categorie aleasă aici înlocuiește la import categoria de pe site; „Rămâne cea actuală” nu o schimbă.
 
 **Poze + fișă tehnică pe produs:** în lista „Produse în feed”, butonul **„Poze + fișă (.zip)”** descarcă o arhivă cu toate pozele produsului, în ordine (`BR-BD60-03280-1.webp`, `-2.webp`…), și fișa tehnică PDF a producătorului în română (`BR-BD60-03280-fisa-tehnica.pdf`). Fișierele vin de la Braytron prin Worker (ruta `/admin/api/file`, doar cu token de admin și doar pentru adresele de poze și fișe Braytron), pentru că serverele lor nu permit descărcarea direct din panou. Dacă un fișier nu se poate descărca, arhiva conține `LIPSESC.txt` cu motivul.
 
