@@ -12,6 +12,7 @@ export interface Env {
   FIELD_GALLERY?: string;
   FIELD_GREEN_TAX?: string;
   FIELD_EAN?: string;
+  FIELD_FILE?: string; // fișierele produsului (fișe, declarații), ex. File: arată ce produse au deja fișă pe site
 
   // Reguli
   AVAILABLE_MIN_STOCK?: string; // implicit 10: stoc >= 10 = disponibil
@@ -59,7 +60,7 @@ export interface Config {
   sourceUrl: string;
   sourceAuth?: string;
   itemPath?: string;
-  fields: { sku?: string; stock?: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string; ean?: string };
+  fields: { sku?: string; stock?: string; name?: string; price?: string; image?: string; gallery?: string; greenTax?: string; ean?: string; file?: string };
   availableMinStock: number;
   celMinStock: number;
   celStockBuffer: number;
@@ -109,6 +110,7 @@ export function loadConfig(env: Env): Config {
     itemPath: opt(env.SOURCE_ITEM_PATH),
     fields: {
       sku: opt(env.FIELD_SKU),
+      file: opt(env.FIELD_FILE),
       stock: opt(env.FIELD_STOCK),
       name: opt(env.FIELD_NAME),
       price: opt(env.FIELD_PRICE),

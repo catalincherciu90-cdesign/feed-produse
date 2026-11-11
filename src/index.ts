@@ -32,6 +32,33 @@ function tokenFrom(req: Request, url: URL): string {
   return url.searchParams.get('token') ?? '';
 }
 
+async function datasheet(code: string, env: WorkerEnv, method: string): Promise<Response> {
+  const base = await env.FEED_KV.get(KV_KEYS.datasheetBase, { cacheTtl: 3600 });
+  if (!base || !/^https:\/\/bapp\.ro\/product-datasheet\/[\w-]+\/$/.test(base)) {
+    return new Response('Fișele tehnice nu sunt disponibile încă (rulează o sincronizare).', { status: 503 });
+  }
+  let res: Response;
+  try {
+    // cacheEverything: fișa se păstrează o zi în cache-ul Cloudflare, ca bapp.ro să nu fie apelat la fiecare vizită.
+    res = await fetch(base + encodeURIComponent(code) + '_RO.pdf', {
+      redirect: 'manual',
+      cf: { cacheTtl: 86400, cacheEverything: true },
+    } as RequestInit);
+  } catch {
+    return new Response('Fișa tehnică nu a putut fi descărcată acum.', { status: 502 });
+  }
+  if (res.status === 404) return new Response('Fișa tehnică nu există pentru acest cod.', { status: 404 });
+  if (res.status !== 200 || !res.body) return new Response(`Producătorul a răspuns cu HTTP ${res.status}.`, { status: 502 });
+  return new Response(method === 'HEAD' ? null : res.body, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${code}-fisa-tehnica.pdf"`,
+      'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
 export default {
   async scheduled(controller: ScheduledController, env: WorkerEnv, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runAutoSync(env, controller.scheduledTime).then((r) => console.log('sincronizare automată:', r)));
@@ -108,6 +135,13 @@ export default {
       }
       const status = await env.FEED_KV.get(KV_KEYS.status);
       return new Response(status ?? 'null', { headers: { 'Content-Type': 'application/json; charset=utf-8' } });
+    }
+
+    // Fișa tehnică Braytron, servită de pe domeniul tău (linkul Braytron conține ID-ul privat al
+    // feed-ului, de aceea nu se pune direct pe site). Folosită în coloana File din /date-tehnice.xml.
+    const fisa = /^\/fise\/([A-Za-z0-9][A-Za-z0-9._-]{0,60})\.pdf$/.exec(url.pathname);
+    if (fisa && (req.method === 'GET' || req.method === 'HEAD')) {
+      return datasheet(fisa[1], env, req.method);
     }
 
     if (url.pathname === '/') {

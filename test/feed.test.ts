@@ -66,6 +66,8 @@ describe('disponibilitate', () => {
 
   it('feed-ul clienților nu conține stocul real', () => {
     const { products } = parseFeed(SAMPLE, loadConfig(baseEnv));
+    // câmpul File (fișe pe site) lipsește în acest feed: nu știm, deci hasFile rămâne nedefinit
+    expect(products[0].hasFile).toBeUndefined();
     const xml = buildClientFeed(products, 10, '2026-11-05T10:00:00Z');
     expect(xml).toContain('<cod>0012</cod>');
     expect(xml).toContain('Periuță &amp; pastă');
@@ -421,6 +423,16 @@ describe('tag-uri repetate în același produs (Gallery_Images de două ori)', (
 
   it('copiile diferite se păstrează toate', () => {
     expect(collapseDuplicateTags({ a: ['x', 'x'], b: ['x', 'y'], c: 'z' })).toEqual({ a: 'x', b: ['x', 'y'], c: 'z' });
+  });
+});
+
+describe('fișierele produsului din feed-ul site-ului (File)', () => {
+  it('marchează produsele care au deja fișiere', () => {
+    const xml = `<products><product><Product_Code>Product_Code</Product_Code><Stock>Stock</Stock><File>File</File></product>
+<product><Product_Code>BR-A</Product_Code><Stock>5</Stock><File><![CDATA[/userfiles/x/fisa.pdf]]></File></product>
+<product><Product_Code>BR-B</Product_Code><Stock>5</Stock><File><![CDATA[]]></File></product></products>`;
+    const { products } = parseFeed(xml, loadConfig({ SOURCE_URL: 'https://x.ro/f.xml', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_FILE: 'File' } as unknown as Env));
+    expect(products.map((p) => [p.sku, p.hasFile])).toEqual([['BR-A', true], ['BR-B', false]]);
   });
 });
 

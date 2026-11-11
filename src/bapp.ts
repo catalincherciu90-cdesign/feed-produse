@@ -44,6 +44,8 @@ export interface BappData {
   >;
   /** Toate categoriile de pe site (din feed-ul Teamshare), pentru alegere în panou. */
   siteCategories?: string[];
+  /** Codurile tale care au deja fișiere (coloana File) pe site: fișa nu le înlocuiește în modul „missing”. */
+  withFiles?: Record<string, 1>;
 }
 
 /** Cheia de categorie a unui produs al producătorului: „Familie / Subfamilie”. */
@@ -71,7 +73,17 @@ export interface BappMapping {
   categories: Record<string, string>;
   /** Producătorul pus în coloana BrandName la toate produsele; gol = nu se exportă */
   brandName: string;
+  /**
+   * Fișa tehnică PDF în coloana File: missing = la produsele noi și la cele existente fără fișiere
+   * pe site; all = la toate (înlocuiește fișierele de pe site); off = niciodată.
+   */
+  datasheetMode?: 'missing' | 'all' | 'off';
+  /** Adresa publică de la care se servesc fișele (domeniul tău), urmată de codul Braytron + .pdf */
+  datasheetUrl?: string;
 }
+
+/** Fișele se servesc de pe domeniul tău: linkul Braytron conține ID-ul privat al feed-ului. */
+export const DEFAULT_DATASHEET_URL = 'https://feed.spotvisionelectric.ro/fise/';
 
 // ---------------------------------------------------------------------------------------------
 // Maparea implicită. Sigure: denumirea românească din feed = numele coloanei Teamshare.
@@ -230,6 +242,8 @@ export function defaultMapping(): BappMapping {
     categoryMode: 'new',
     categories: {},
     brandName: 'Braytron',
+    datasheetMode: 'missing',
+    datasheetUrl: DEFAULT_DATASHEET_URL,
   };
 }
 
@@ -267,9 +281,10 @@ export function translateValue(value: string, translations: Record<string, strin
 export function buildImportTable(
   codes: string[],
   data: {
-    products: Record<string, { c: string; p: string[]; a: Record<string, string>; k?: string }>;
+    products: Record<string, { c: string; p: string[]; a: Record<string, string>; k?: string; d?: string }>;
     index: Record<string, string>;
     categories?: Record<string, { category: string }>;
+    withFiles?: Record<string, 1>;
   },
   mapping: {
     rules: Record<string, { column: string; unit?: string }>;
@@ -282,6 +297,8 @@ export function buildImportTable(
     /** Categoria aleasă de tine pentru un produs anume (cod -> categorie): prioritate maximă. */
     productCategories?: Record<string, string>;
     brandName?: string;
+    datasheetMode?: string;
+    datasheetUrl?: string;
   },
   translateFn: (v: string, t: Record<string, string>) => string,
   columnOrder: readonly string[],
@@ -297,8 +314,12 @@ export function buildImportTable(
   const ADD = 'AddImages - P39379';
   const CAT = 'Category';
   const BRAND = 'BrandName';
+  const FILE = 'File';
+  const dsMode = mapping.datasheetMode || 'missing';
+  const dsUrl = mapping.datasheetUrl === undefined ? 'https://feed.spotvisionelectric.ro/fise/' : String(mapping.datasheetUrl || '');
+  const withFiles = data.withFiles || {};
   const brand = String(mapping.brandName || '').trim();
-  const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string>; k?: string } }[] = [];
+  const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string>; k?: string; d?: string } }[] = [];
   const missing: string[] = [];
   const seen: Record<string, boolean> = {};
   const reverse: Record<string, string> = {};
@@ -370,6 +391,11 @@ export function buildImportTable(
         row[ADD] = photos.slice(1).join(mapping.imageSeparator);
         used[ADD] = true;
       }
+    }
+    // Fișa tehnică PDF (coloana File), servită de pe domeniul tău: /fise/<cod Braytron>.pdf
+    if (dsMode !== 'off' && dsUrl && f.prod.d && (dsMode === 'all' || !(f.existing && withFiles[f.code]))) {
+      row[FILE] = dsUrl + encodeURIComponent(f.prod.c) + '.pdf';
+      used[FILE] = true;
     }
     // Categoria: corectura ta, altfel cea învățată din produsele existente
     const fa = f.prod.a || {};
@@ -647,8 +673,14 @@ export function validateMapping(raw: unknown, columns: readonly string[]): BappM
     if (key) categories[key] = str(v, MAPPING_LIMITS.maxText, `Categoria pentru „${key}”`).trim();
   }
   const brandName = r.brandName === undefined ? 'Braytron' : str(r.brandName, 100, 'Producătorul').trim();
+  const dsMode = r.datasheetMode === undefined ? 'missing' : r.datasheetMode;
+  if (dsMode !== 'missing' && dsMode !== 'all' && dsMode !== 'off') throw new Error('datasheetMode trebuie să fie missing, all sau off');
+  const dsUrl = r.datasheetUrl === undefined ? DEFAULT_DATASHEET_URL : str(r.datasheetUrl, 200, 'Adresa fișelor').trim();
+  if (dsUrl && !/^https:\/\/[^\s/]+\/\S*\/$/.test(dsUrl)) throw new Error('Adresa fișelor trebuie să înceapă cu https:// și să se termine cu /');
   return {
     brandName,
+    datasheetMode: dsMode,
+    datasheetUrl: dsUrl,
     categoryMode: mode,
     categories,
     rules,

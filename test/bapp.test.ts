@@ -39,6 +39,9 @@ describe('feed producător (bapp.ro)', () => {
     expect(d.products.A1.d).toBe('A1_RO.pdf');
     expect(d.products.A2.d).toBe('A2_RO.pdf');
     expect(d.products.A3.d).toBeUndefined();
+    // produsele tale legate care au deja fișiere pe site
+    const d2 = parseBapp(x, [{ sku: 'BR-A1', hasFile: true }, { sku: 'BR-A2', hasFile: false }, { sku: 'BR-NIMIC', hasFile: true }], { codePrefix: 'BR-', source: 's', generatedAt: 'x' });
+    expect(d2.withFiles).toEqual({ 'BR-A1': 1 });
   });
 
   it('citește produse, poze în ordine, atribute și leagă după cod sau EAN', () => {
@@ -141,6 +144,38 @@ describe('feed producător (bapp.ro)', () => {
     expect(out).toMatch(/No errors detected/);
     expect(out).toContain('BR-X-1.webp');
     expect(out).toContain('BR-X-fisa-tehnica.pdf');
+  });
+
+  it('fișa tehnică în coloana File: la produse noi și la cele fără fișiere pe site; linkul e pe domeniul tău', () => {
+    const d = {
+      ...data,
+      products: { ...data.products, 'BH07-04101': { ...data.products['BH07-04101'], d: 'BH07-04101_RO.pdf' }, 'BA13-60920': { ...data.products['BA13-60920'], d: 'BA13-60920_RO.pdf' } },
+      index: { 'BR-BH07-04101': 'BH07-04101', 'BR-BA13-60920': 'BA13-60920' },
+      withFiles: { 'BR-BH07-04101': 1 as const }, // are deja fișă pe site
+    };
+    const file = (t: { rows: string[][] }, code: string) => {
+      const i = t.rows[0].indexOf('File');
+      return i < 0 ? undefined : t.rows.find((r) => r[0] === code)![i];
+    };
+    const t = buildImportTable(['BR-BH07-04101', 'BR-BA13-60920'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    expect(file(t, 'BR-BH07-04101')).toBe(''); // existent cu fișiere: nu se atinge
+    expect(file(t, 'BR-BA13-60920')).toBe('https://feed.spotvisionelectric.ro/fise/BA13-60920.pdf');
+    expect(JSON.stringify(t.rows)).not.toContain('bapp.ro'); // ID-ul privat nu apare
+    const all = buildImportTable(['BR-BH07-04101'], d, { ...defaultMapping(), datasheetMode: 'all' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(file(all, 'BR-BH07-04101')).toBe('https://feed.spotvisionelectric.ro/fise/BH07-04101.pdf');
+    const off = buildImportTable(['BR-BA13-60920'], d, { ...defaultMapping(), datasheetMode: 'off' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(file(off, 'BR-BA13-60920')).toBeUndefined();
+    expect(TEAMSHARE_COLUMNS).toContain('File');
+    expect(buildTechFeedXml(t.rows)).toContain('<File><![CDATA[https://feed.spotvisionelectric.ro/fise/BA13-60920.pdf]]></File>');
+  });
+
+  it('validează setările fișei', () => {
+    const m = validateMapping({ ...defaultMapping(), datasheetMode: 'all', datasheetUrl: 'https://feed.exemplu.ro/fise/' }, TEAMSHARE_COLUMNS);
+    expect(m).toMatchObject({ datasheetMode: 'all', datasheetUrl: 'https://feed.exemplu.ro/fise/' });
+    expect(validateMapping({ ...defaultMapping(), datasheetMode: undefined, datasheetUrl: undefined }, TEAMSHARE_COLUMNS)).toMatchObject({ datasheetMode: 'missing', datasheetUrl: 'https://feed.spotvisionelectric.ro/fise/' });
+    expect(() => validateMapping({ ...defaultMapping(), datasheetMode: 'x' }, TEAMSHARE_COLUMNS)).toThrow();
+    expect(() => validateMapping({ ...defaultMapping(), datasheetUrl: 'http://fara-https/' }, TEAMSHARE_COLUMNS)).toThrow();
+    expect(() => validateMapping({ ...defaultMapping(), datasheetUrl: 'https://fara-slash-final.ro/fise' }, TEAMSHARE_COLUMNS)).toThrow();
   });
 
   it('fără traducere, valorile rămân ca la producător', () => {

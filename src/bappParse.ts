@@ -27,7 +27,7 @@ function txt(v: unknown): string {
  */
 export function parseBapp(
   xml: string,
-  ours: { sku: string; ean?: string; category?: string }[],
+  ours: { sku: string; ean?: string; category?: string; hasFile?: boolean }[],
   opts: { codePrefix: string; source: string; generatedAt: string },
 ): BappData {
   const parser = new XMLParser({
@@ -106,6 +106,9 @@ export function parseBapp(
       byEanCount++;
     }
   }
+  // Produsele tale legate care au deja fișiere pe site (coloana File): fișa nu le înlocuiește implicit.
+  const withFiles: Record<string, 1> = {};
+  for (const o of ours) if (o.hasFile && index[o.sku]) withFiles[o.sku] = 1;
   // Corespondența familie -> categoria ta, din produsele deja legate (categoria majoritară).
   const ourCat = new Map(ours.map((o) => [o.sku, (o.category || '').trim()]));
   const votes: Record<string, Record<string, number>> = {};
@@ -162,6 +165,7 @@ export function parseBapp(
     attributes,
     products,
     ...(datasheetBase ? { datasheetBase } : {}),
+    ...(Object.keys(withFiles).length ? { withFiles } : {}),
     index,
     matched: { byCode, byEan: byEanCount },
   };

@@ -100,6 +100,7 @@ jobs:
           FIELD_GALLERY: Gallery_Images
           FIELD_GREEN_TAX: GreenTax # taxa verde cu TVA, afișată în panou
           FIELD_EAN: EAN # cod de bare, verificat în panou (lipsă / invalid / duplicat)
+          FIELD_FILE: File # fișierele produsului: la cele care au deja, fișa Braytron nu le înlocuiește
           CLIENT_FEED_EXTRA_FIELDS: ""
           # Feed CEL: adaugă Image_Big (imaginea mare, 879x879) lângă miniatura de 200x200
           CEL_BIG_IMAGE_FROM: Size_200_x_200

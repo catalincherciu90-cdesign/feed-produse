@@ -21,6 +21,7 @@ export const KV_KEYS = {
   bappMapping: 'admin:bapp-mapping', // maparea atribut -> coloană Teamshare și traducerile
   autoSync: 'admin:auto-sync', // intervalul sincronizării automate, ales în panou
   autoSyncState: 'admin:auto-sync-state', // ultima pornire automată și eroarea, dacă a fost
+  datasheetBase: 'bapp:datasheetBase', // începutul linkului fișelor Braytron (conține ID-ul privat; nu se arată public)
   bappFeedCodes: 'admin:bapp-feed-codes', // codurile alese pentru /date-tehnice.xml
   bappProductCategories: 'admin:bapp-product-categories', // categoria aleasă pe produs (cod -> categorie)
   techFeed: 'feed:date-tehnice.xml', // feed XML cu date tehnice și poze pentru importul în Teamshare

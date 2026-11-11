@@ -8,6 +8,7 @@ export interface Product {
   price: number | null;
   image?: string; // linkul imaginii principale (miniatura din feed)
   galleryCount?: number; // câte poze are în galerie (linkuri separate prin #)
+  hasFile?: boolean; // are fișiere (fișă tehnică etc.) pe site
   greenTax?: number | null; // taxa verde (cu TVA)
   ean?: string; // cod de bare, așa cum vine din feed
   // Pentru catalogul Facebook
@@ -142,6 +143,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const priceField = pickField(items, config.fields.price, PRICE_CANDIDATES);
   const imageField = pickField(items, config.fields.image, IMAGE_CANDIDATES);
   const galleryField = pickField(items, config.fields.gallery, GALLERY_CANDIDATES);
+  const fileField = pickField(items, config.fields.file, ['file', 'files']);
   const greenTaxField = pickField(items, config.fields.greenTax, GREEN_TAX_CANDIDATES);
   const eanField = pickField(items, config.fields.ean, EAN_CANDIDATES);
   const urlField = pickField(items, undefined, URL_CANDIDATES);
@@ -184,6 +186,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       price: priceField ? parseNumber(text(item[priceField])) : null,
       image: (imageField && text(item[imageField])) || undefined,
       galleryCount: galleryField ? countGallery(text(item[galleryField])) : undefined,
+      hasFile: fileField ? !!(text(item[fileField]) ?? '').trim() : undefined,
       greenTax: greenTaxField ? parseNumber(text(item[greenTaxField])) : undefined,
       ean: eanField ? text(item[eanField]) ?? '' : undefined,
       url: (urlField && text(item[urlField])) || undefined,

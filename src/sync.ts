@@ -351,6 +351,10 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date(),
           await kv.put(KV_KEYS.bappData, json);
           await kv.put(KV_KEYS.bappHash, hash);
         }
+        // Pentru ruta publică /fise/<cod>.pdf: Worker-ul citește doar acest text mic, nu toate datele.
+        if (data.datasheetBase && data.datasheetBase !== (await kv.get(KV_KEYS.datasheetBase))) {
+          await kv.put(KV_KEYS.datasheetBase, data.datasheetBase);
+        }
         status.bapp = {
           products: Object.keys(data.products).length,
           linked: Object.keys(data.index).length,
