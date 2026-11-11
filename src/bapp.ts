@@ -321,7 +321,8 @@ export function buildImportTable(
     if (key && data.products[key]) {
       // În fișier punem mereu codul tău: dacă ai scris codul producătorului (ex. BG38-12481),
       // îl înlocuim cu codul tău legat de el (BR-BG38-12481). Un cod al tău rămâne neschimbat.
-      const own = data.index[code] ? code : reverse[key] || code;
+      // Produs nou (fără cod al tău legat): codul tău = prefixul din Mapare + codul producătorului.
+      const own = data.index[code] ? code : reverse[key] || (mapping.codePrefix ? mapping.codePrefix + key : code);
       addSource(own, code);
       if (own !== code && seen[own]) continue;
       seen[own] = true;
@@ -374,7 +375,11 @@ export function buildImportTable(
     const family = main && subf ? main + ' / ' + subf : main || subf;
     let category = '';
     const perCode = mapping.productCategories || {};
-    const chosen = Object.prototype.hasOwnProperty.call(perCode, f.code) ? String(perCode[f.code] || '').trim() : '';
+    // Categoria aleasă e salvată pe codul din feed; la produsele noi, alegerile mai vechi pot fi
+    // pe codul producătorului (înainte să se pună prefixul automat).
+    const has = (k: string) => Object.prototype.hasOwnProperty.call(perCode, k);
+    const chosenKey = has(f.code) ? f.code : has(f.prod.c) ? f.prod.c : '';
+    const chosen = chosenKey ? String(perCode[chosenKey] || '').trim() : '';
     if (chosen && mode !== 'off') {
       row[CAT] = chosen;
       used[CAT] = true;

@@ -106,6 +106,8 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 
 **Feed pentru importul în site:** `https://feed.spotvisionelectric.ro/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
 
+**Codul produsului în feed:** poți scrie fie codul tău, fie codul Braytron. Un produs care există deja pe site apare cu codul tău legat de el. Un produs nou primește automat prefixul din Mapare (implicit `BR-`): `BD60-03280` devine `BR-BD60-03280`, iar codul Braytron rămâne în coloana „Cod Furnizor”.
+
 Structura e ca exportul Teamshare (`<products><product>`, valori în CDATA, celulele goale lipsesc). **Primul `<product>` e rândul de titluri**, cu numele exact al coloanei din șablonul de import (ex. `Culoarea corpului: - P39493`); în Teamshare, la Feed In, bifează „First row has column names”. Tag-urile sunt numele coloanelor fără diacritice, cu `_` în loc de spații și semne, și cu ID-ul proprietății, pentru că șablonul are coloane cu același nume: `Product_Code`, `Culoarea_corpului_P39493`, `ProductImage_P39360`, `AddImages_P39379`.
 
 **Setare:** secretul GitHub `BAPP_FEED_URL` (linkul feed-ului de atribute, cu `lang=ro`). Feed-ul se descarcă la fiecare „Sincronizează acum”; în Cloudflare se scrie doar dacă datele s-au schimbat.

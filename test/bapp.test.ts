@@ -85,6 +85,29 @@ describe('feed producător (bapp.ro)', () => {
     expect(t.sources['NU-EXISTA']).toEqual(['NU-EXISTA']);
   });
 
+  it('produs nou scris cu codul producătorului: primește prefixul BR-, iar codul Braytron rămâne la furnizor', () => {
+    const d = { ...data, index: { 'BR-BH07-04101': 'BH07-04101' } }; // BA13-60920 nu e pe site
+    for (const typed of ['BA13-60920', 'BR-BA13-60920']) {
+      const t = buildImportTable([typed], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+      expect(t.perProduct.map((p) => [p.code, p.supplierCode, p.existing])).toEqual([['BR-BA13-60920', 'BA13-60920', false]]);
+      expect(t.rows[1][0]).toBe('BR-BA13-60920');
+    }
+    // amândouă scrierile în aceeași listă dau un singur produs, iar ambele pot fi scoase din listă
+    const t = buildImportTable(['BA13-60920', 'BR-BA13-60920'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    expect(t.perProduct).toHaveLength(1);
+    expect(t.sources['BR-BA13-60920'].sort()).toEqual(['BA13-60920', 'BR-BA13-60920']);
+    // fără prefix în Mapare, codul rămâne cum a fost scris
+    const t2 = buildImportTable(['BA13-60920'], d, { ...defaultMapping(), codePrefix: '' }, translateValue, TEAMSHARE_COLUMNS);
+    expect(t2.perProduct[0].code).toBe('BA13-60920');
+  });
+
+  it('categoria aleasă înainte pe codul producătorului se păstrează după prefixare', () => {
+    const d = { ...data, index: { 'BR-BH07-04101': 'BH07-04101' } };
+    const m = { ...defaultMapping(), productCategories: { 'BA13-60920': 'Categoria mea' } };
+    const t = buildImportTable(['BA13-60920'], d, m, translateValue, TEAMSHARE_COLUMNS);
+    expect(t.perProduct[0]).toMatchObject({ code: 'BR-BA13-60920', category: 'Categoria mea' });
+  });
+
   it('fără traducere, valorile rămân ca la producător', () => {
     const m = { ...defaultMapping(), translate: false };
     const t = buildImportTable(['BR-BH07-04101'], data, m, translateValue, TEAMSHARE_COLUMNS);
@@ -181,11 +204,11 @@ describe('categorii', () => {
     const t = buildImportTable(['BR-A3', 'N1', 'N2'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
     const h = t.rows[0];
     expect(h).toContain('Category');
-    const cat = (code: string) => t.rows.find((r) => r[0] === code)![h.indexOf('Category')];
+    const cat = (code: string) => t.rows.find((r) => r[0] === code || r[0] === 'BR-' + code)![h.indexOf('Category')];
     expect(cat('BR-A3')).toBe(''); // existent: nu se schimbă
     expect(cat('N1')).toBe('Sigurante Automate'); // nou: categoria învățată
     expect(cat('N2')).toBe(''); // nou, fără corespondență
-    expect(t.perProduct.find((p) => p.code === 'N1')).toMatchObject({ existing: false, family: 'Electrice / MCB' });
+    expect(t.perProduct.find((p) => p.code === 'BR-N1')).toMatchObject({ existing: false, family: 'Electrice / MCB' });
   });
 
   it('corecturile tale au prioritate; modurile all și off', () => {
@@ -212,7 +235,7 @@ describe('categoria aleasă pe produs', () => {
 </attributes></category></categories></section></sections></product>`;
   const d = parseBapp(`<response><products>${X('A1')}${X('N1')}${X('N2')}</products></response>`,
     [{ sku: 'BR-A1', category: 'Sigurante Automate' }], { codePrefix: 'BR-', source: 's', generatedAt: 'now' });
-  const cat = (t: { rows: string[][] }, code: string) => t.rows.find((r) => r[0] === code)![t.rows[0].indexOf('Category')];
+  const cat = (t: { rows: string[][] }, code: string) => t.rows.find((r) => r[0] === code || r[0] === 'BR-' + code)![t.rows[0].indexOf('Category')];
 
   it('are prioritate față de categoria propusă și se aplică și la produse existente', () => {
     const m = { ...defaultMapping(), productCategories: { N1: 'Electrice/Siguranțe noi', 'BR-A1': 'Mutat aici' } };
@@ -289,7 +312,7 @@ ${P('S1', 'BRY-LINEA-1G-16A-WHT-SOCKET', 'Electrice', 'Întrerupător și priză
 
   it('în fișier: sugestia pe produs, iar corectura ta pe familie o înlocuiește', () => {
     const t = buildImportTable(['G1', 'G2'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
-    const cat = (tb: { rows: string[][] }, c: string) => tb.rows.find((r) => r[0] === c)![tb.rows[0].indexOf('Category')];
+    const cat = (tb: { rows: string[][] }, c: string) => tb.rows.find((r) => r[0] === c || r[0] === 'BR-' + c)![tb.rows[0].indexOf('Category')];
     expect(cat(t, 'G1')).toBe('Becuri si tuburi/Globe Bulbs');
     expect(cat(t, 'G2')).toBe('Becuri si tuburi/Becuri Led A60/P45/G45');
     const o = buildImportTable(['G1'], d, { ...defaultMapping(), categories: { 'Becuri & Tuburi / Becuri glob': 'X/Y' } }, translateValue, TEAMSHARE_COLUMNS);
