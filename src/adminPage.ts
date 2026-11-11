@@ -997,10 +997,10 @@ function renderTechInfo() {
 // ---------- Lista produselor din feed ----------
 tech.feedPage = 0; tech.feedRemove = {};
 function feedRows() {
-  if (!tech.data || !tech.mapping) return { rows: [], missing: [] };
+  if (!tech.data || !tech.mapping) return { rows: [], missing: [], sources: {} };
   var m = Object.assign({}, tech.mapping, { productCategories: tech.productCategories || {} });
   var t = BAPP.buildImportTable(tech.feedCodes || [], tech.data, m, BAPP.translateValue, tech.meta.columns);
-  return { rows: t.perProduct, missing: t.missing };
+  return { rows: t.perProduct, missing: t.missing, sources: t.sources };
 }
 function renderFeedList() {
   var root = $('tech-feed-list'); if (!root) return; clear(root);
@@ -1079,7 +1079,14 @@ function renderFeedPending() {
   if (!n) return;
   box.appendChild(document.createTextNode(fmtNum(n) + ' produse marcate pentru scoatere din feed. '));
   box.appendChild(el('button', { class: 'btn primary', type: 'button', text: 'Salvează și regenerează feed-ul', onclick: function () {
-    var codes = (tech.feedCodes || []).filter(function (c) { return !tech.feedRemove[c]; });
+    // Lista salvată poate avea codul scris altfel decât în feed (ex. codul Braytron BC14-01120
+    // în loc de BR-BC14-01120): scoatem toate codurile din listă care duc la produsele marcate.
+    var src = feedRows().sources || {};
+    var drop = {};
+    Object.keys(tech.feedRemove).forEach(function (c) { drop[c] = true; (src[c] || []).forEach(function (x) { drop[x] = true; }); });
+    var cur = tech.feedCodes || [];
+    var codes = cur.filter(function (c) { return !drop[c]; });
+    if (codes.length === cur.length) return toast('Nu am găsit produsele marcate în lista salvată. Reîncarcă pagina și încearcă din nou.');
     saveFeedCodes(codes, fmtNum(n) + ' produse scoase din feed.');
   } }));
   box.appendChild(document.createTextNode(' '));

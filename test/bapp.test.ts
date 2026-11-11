@@ -77,6 +77,14 @@ describe('feed producător (bapp.ro)', () => {
     expect(t.perProduct.map((p) => p.code).sort()).toEqual(['BR-BH07-04101', 'BR-DUBLU']);
   });
 
+  it('ține minte ce cod din listă a dus la fiecare produs (pentru „Scoate din feed”)', () => {
+    // BA13-60920 e codul producătorului; în feed apare ca ALT-COD, codul tău
+    const t = buildImportTable(['BA13-60920', 'BR-BH07-04101', 'BH07-04101', 'NU-EXISTA'], data, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
+    expect(t.sources['ALT-COD']).toEqual(['BA13-60920']);
+    expect(t.sources['BR-BH07-04101'].sort()).toEqual(['BH07-04101', 'BR-BH07-04101']);
+    expect(t.sources['NU-EXISTA']).toEqual(['NU-EXISTA']);
+  });
+
   it('fără traducere, valorile rămân ca la producător', () => {
     const m = { ...defaultMapping(), translate: false };
     const t = buildImportTable(['BR-BH07-04101'], data, m, translateValue, TEAMSHARE_COLUMNS);

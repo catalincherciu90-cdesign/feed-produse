@@ -286,6 +286,8 @@ export function buildImportTable(
   rows: string[][];
   missing: string[];
   perProduct: { code: string; supplierCode: string; values: number; photos: number; existing: boolean; category: string; family: string; suggested: string }[];
+  /** Codul din feed -> codurile din listă care duc la el (ex. BR-BC14-01120 <- BC14-01120). */
+  sources: Record<string, string[]>;
 } {
   const CODE = 'ProductCode';
   const IMG = 'ProductImage - P39360';
@@ -298,9 +300,18 @@ export function buildImportTable(
   const seen: Record<string, boolean> = {};
   const reverse: Record<string, string> = {};
   for (const own of Object.keys(data.index)) reverse[data.index[own]] = own;
+  // codul din feed (al tău) -> codurile scrise în listă care duc la el (ca să poată fi scoase din listă)
+  const sources: Record<string, string[]> = {};
+  const addSource = (own: string, raw: string) => {
+    (sources[own] = sources[own] || []).indexOf(raw) < 0 && sources[own].push(raw);
+  };
   for (const raw of codes) {
     const code = String(raw || '').trim();
-    if (!code || seen[code]) continue;
+    if (!code) continue;
+    if (seen[code]) {
+      addSource(code, code);
+      continue;
+    }
     seen[code] = true;
     let key = data.index[code];
     if (!key && data.products[code]) key = code;
@@ -311,10 +322,14 @@ export function buildImportTable(
       // În fișier punem mereu codul tău: dacă ai scris codul producătorului (ex. BG38-12481),
       // îl înlocuim cu codul tău legat de el (BR-BG38-12481). Un cod al tău rămâne neschimbat.
       const own = data.index[code] ? code : reverse[key] || code;
+      addSource(own, code);
       if (own !== code && seen[own]) continue;
       seen[own] = true;
       found.push({ code: own, existing: !!data.index[own], prod: data.products[key] });
-    } else missing.push(code);
+    } else {
+      addSource(code, code);
+      missing.push(code);
+    }
   }
 
   const cells: Record<string, string>[] = [];
@@ -382,7 +397,7 @@ export function buildImportTable(
   for (const col of Object.keys(used)) if (header.indexOf(col) < 0) header.push(col);
   const rows = [header];
   for (const r of cells) rows.push(header.map(function (h) { return r[h] || ''; }));
-  return { rows: rows, missing: missing, perProduct: perProduct };
+  return { rows: rows, missing: missing, perProduct: perProduct, sources: sources };
 }
 
 /**
