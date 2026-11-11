@@ -66,3 +66,53 @@ describe('fișa tehnică publică /fise/<cod>.pdf', () => {
     expect((await get('/fise/BD60-03280.pdf')).status).toBe(502);
   });
 });
+
+describe('sincronizarea automată pornită de citirea unui feed sau de panou', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  function setup(statusStartedAt: string | null, autoSync?: string) {
+    const store = new Map<string, string>();
+    if (statusStartedAt) store.set(KV_KEYS.status, JSON.stringify({ startedAt: statusStartedAt }));
+    if (autoSync) store.set(KV_KEYS.autoSync, autoSync);
+    const kv = {
+      get: async (k: string, o?: unknown) => (o === 'stream' ? null : (store.get(k) ?? null)),
+      put: async (k: string, v: string) => void store.set(k, v),
+    };
+    const env = { FEED_KV: kv as unknown as KVNamespace, GH_DISPATCH_TOKEN: 'gh', GH_REPO: 'o/r', GH_WORKFLOW: 'sync.yml', GH_REF: 'main' } as never;
+    const waits: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (p: Promise<unknown>) => void waits.push(p), passThroughOnException() {} } as unknown as ExecutionContext;
+    const gh = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', gh);
+    return { env, ctx, waits, gh, store };
+  }
+  const req = (path: string) => new Request(`https://${PUBLIC_HOST}${path}`);
+
+  it('pornește sincronizarea în fundal când a trecut intervalul (implicit o oră)', async () => {
+    const t = setup(new Date(Date.now() - 2 * 3600_000).toISOString());
+    const res = await worker.fetch(req('/cel.xml'), t.env, t.ctx);
+    expect(res.status).toBe(503); // feed-ul lipsește în test; răspunsul nu așteaptă sincronizarea
+    await Promise.all(t.waits);
+    expect(t.gh).toHaveBeenCalledTimes(1);
+    expect((t.gh.mock.calls[0] as unknown as [string])[0]).toContain('/actions/workflows/sync.yml/dispatches');
+    expect(JSON.parse(t.store.get(KV_KEYS.autoSyncState)!).lastAt).toBeTruthy();
+    // a doua citire imediat după: nu mai pornește alta
+    await worker.fetch(req('/feed.xml'), t.env, t.ctx);
+    await Promise.all(t.waits);
+    expect(t.gh).toHaveBeenCalledTimes(1);
+  });
+
+  it('nu pornește dacă sincronizarea a rulat de curând sau e oprită, și nici la alte adrese', async () => {
+    const recent = setup(new Date(Date.now() - 10 * 60_000).toISOString());
+    await worker.fetch(req('/date-tehnice.xml'), recent.env, recent.ctx);
+    await Promise.all(recent.waits);
+    expect(recent.gh).not.toHaveBeenCalled();
+
+    const off = setup(new Date(Date.now() - 48 * 3600_000).toISOString(), JSON.stringify({ hours: 0 }));
+    await worker.fetch(req('/cel.xml'), off.env, off.ctx);
+    await Promise.all(off.waits);
+    expect(off.gh).not.toHaveBeenCalled();
+
+    const other = setup(new Date(Date.now() - 48 * 3600_000).toISOString());
+    for (const p of ['/', '/fise/X.pdf', '/status']) await worker.fetch(req(p), other.env, other.ctx);
+    expect(other.waits).toHaveLength(0);
+  });
+});

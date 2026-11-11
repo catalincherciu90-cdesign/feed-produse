@@ -1,8 +1,9 @@
 /**
  * Worker Cloudflare (plan gratuit): servește feed-urile, statusul și panoul de admin (/admin).
  * Sincronizarea propriu-zisă rulează în GitHub Actions (src/run.ts) și scrie aici în KV.
- * Sincronizarea pornește din panou (butonul „Sincronizează acum”) sau automat, din GitHub (schedule
- * în sync.yml). scheduled() de mai jos se folosește doar dacă adaugi un Cron Trigger în wrangler.toml.
+ * Sincronizarea pornește din panou (butonul „Sincronizează acum”) sau automat: din GitHub (schedule
+ * în sync.yml), la cererile de feed/panou când a trecut intervalul ales (runAutoSync) și din
+ * scheduled() de mai jos, dacă adaugi un Cron Trigger în wrangler.toml.
  */
 import { handleAdmin } from './admin';
 import { runAutoSync } from './autoSync';
@@ -69,7 +70,7 @@ export default {
     ctx.waitUntil(runAutoSync(env, controller.scheduledTime).then((r) => console.log('sincronizare automată:', r)));
   },
 
-  async fetch(req: Request, env: WorkerEnv): Promise<Response> {
+  async fetch(req: Request, env: WorkerEnv, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     // Linkurile vechi (feed-produse...workers.dev) merg mai departe, spre domeniul propriu.
@@ -78,6 +79,14 @@ export default {
     // o protecție anti-bot care le poate trimite o pagină HTML în loc de XML, deci le servim direct.
     if (url.hostname.endsWith('.workers.dev') && req.headers.get('X-Forwarded-Host') !== PUBLIC_HOST && !isMachinePath(url.pathname)) {
       return Response.redirect(`https://${PUBLIC_HOST}${url.pathname}${url.search}`, 301);
+    }
+
+    // Sincronizarea automată pornită de vizite: GitHub pornește programarea orară foarte rar, iar
+    // locurile gratuite de Cron Trigger din cont sunt ocupate. Feed-urile sunt citite periodic de
+    // CEL, Meta și Teamshare, iar panoul de tine: la o astfel de cerere, dacă a trecut intervalul
+    // ales în panou, Worker-ul pornește sincronizarea în fundal (răspunsul nu așteaptă).
+    if (ctx && req.method === 'GET' && (/^\/[\w.-]+\.xml$/.test(url.pathname) || url.pathname === '/admin')) {
+      ctx.waitUntil(runAutoSync(env, Date.now()).catch(() => 'failed'));
     }
 
     // Panoul de admin: /admin și /admin/api/*

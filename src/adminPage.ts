@@ -575,7 +575,7 @@ function autoSyncBox() {
   });
   box.appendChild(sel);
   var st = a.state || {};
-  var info = st.lastAt ? 'Ultima pornire automată: ' + fmtTime(st.lastAt) + ' (' + ago(st.lastAt) + ').' : (a.hours ? 'Încă nu a pornit automat. GitHub verifică în fiecare oră (pe la minutul 23, uneori cu câteva minute întârziere).' : '');
+  var info = st.lastAt ? 'Ultima pornire automată: ' + fmtTime(st.lastAt) + ' (' + ago(st.lastAt) + ').' : (a.hours ? 'Încă nu a pornit automat. Pornește când CEL, Meta sau Teamshare citesc un feed, când deschizi panoul sau din programarea GitHub, dacă a trecut intervalul.' : '');
   if (info) box.appendChild(el('span', { class: 'muted small', text: info }));
   if (st.error && st.lastTryAt && (!st.lastAt || st.lastTryAt > st.lastAt)) {
     box.appendChild(el('span', { class: 'small', style: 'color:var(--bad, #b42318)', text: 'Ultima încercare (' + ago(st.lastTryAt) + ') a eșuat: ' + st.error }));
