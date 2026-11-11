@@ -1040,13 +1040,9 @@ function renderFeedList() {
     var p = it.p; var prod = tech.data.products[p.supplierCode]; var img = prod && prod.p && prod.p[0];
     var removing = !!tech.feedRemove[p.code];
     var catCell = el('td', { 'data-label': 'Categorie în feed' });
+    // Categoria se poate schimba direct aici; se salvează cu „Salvează și regenerează feed-ul”.
     if (it.missing) catCell.appendChild(badge(['negăsit la producător: nu intră în feed', 'b-bad']));
-    else if (p.category) {
-      catCell.appendChild(el('div', { class: 'small', text: p.category }));
-      catCell.appendChild(badge([(tech.productCategories || {})[p.code] ? 'aleasă de tine' : 'propusă', (tech.productCategories || {})[p.code] ? 'b-ok' : 'b-muted']));
-    } else if ((tech.mapping.categoryMode || 'new') === 'off') catCell.appendChild(badge(['nu se exportă', 'b-muted']));
-    else if (p.existing) catCell.appendChild(badge(['rămâne cea actuală', 'b-muted']));
-    else catCell.appendChild(badge(['fără categorie', 'b-warn']));
+    else catCell.appendChild(categoryInput(p, { inFeedList: true }));
     var tr = el('tr', removing ? { style: 'opacity:.45' } : null, [
       el('td', { class: 'thumb-cell', 'data-label': 'Poză' }, [img ? el('a', { href: img, target: '_blank', rel: 'noopener noreferrer' }, [el('img', { class: 'thumb', loading: 'lazy', alt: '', referrerpolicy: 'no-referrer', src: img })]) : missingBox(it.missing ? 'negăsit' : 'fără poză')]),
       el('td', { 'data-label': 'Cod' }, [el('div', { class: 'code', text: p.code }), p.supplierCode && p.supplierCode !== p.code ? el('div', { class: 'code small muted', text: p.supplierCode }) : null,
@@ -1128,22 +1124,37 @@ function downloadProductFiles(code, prod, btn) {
 function renderFeedPending() {
   var box = $('tech-feed-pending'); clear(box);
   var n = Object.keys(tech.feedRemove).length;
-  box.classList.toggle('hidden', !n);
-  if (!n) return;
-  box.appendChild(document.createTextNode(fmtNum(n) + ' produse marcate pentru scoatere din feed. '));
+  var cats = !!tech.catDirty;
+  box.classList.toggle('hidden', !n && !cats);
+  if (!n && !cats) return;
+  var what = [];
+  if (n) what.push(fmtNum(n) + ' produse marcate pentru scoatere din feed');
+  if (cats) what.push('categorii modificate, nesalvate');
+  var msg = what.join(' · ');
+  box.appendChild(document.createTextNode(msg.charAt(0).toUpperCase() + msg.slice(1) + '. '));
   box.appendChild(el('button', { class: 'btn primary', type: 'button', text: 'Salvează și regenerează feed-ul', onclick: function () {
-    // Lista salvată poate avea codul scris altfel decât în feed (ex. codul Braytron BC14-01120
-    // în loc de BR-BC14-01120): scoatem toate codurile din listă care duc la produsele marcate.
-    var src = feedRows().sources || {};
-    var drop = {};
-    Object.keys(tech.feedRemove).forEach(function (c) { drop[c] = true; (src[c] || []).forEach(function (x) { drop[x] = true; }); });
     var cur = tech.feedCodes || [];
-    var codes = cur.filter(function (c) { return !drop[c]; });
-    if (codes.length === cur.length) return toast('Nu am găsit produsele marcate în lista salvată. Reîncarcă pagina și încearcă din nou.');
-    saveFeedCodes(codes, fmtNum(n) + ' produse scoase din feed.');
+    var codes = cur;
+    if (n) {
+      // Lista salvată poate avea codul scris altfel decât în feed (ex. codul Braytron BC14-01120
+      // în loc de BR-BC14-01120): scoatem toate codurile din listă care duc la produsele marcate.
+      var src = feedRows().sources || {};
+      var drop = {};
+      Object.keys(tech.feedRemove).forEach(function (c) { drop[c] = true; (src[c] || []).forEach(function (x) { drop[x] = true; }); });
+      codes = cur.filter(function (c) { return !drop[c]; });
+      if (codes.length === cur.length) return toast('Nu am găsit produsele marcate în lista salvată. Reîncarcă pagina și încearcă din nou.');
+    }
+    var done = [];
+    if (n) done.push(fmtNum(n) + ' produse scoase din feed.');
+    if (cats) done.push('Categoriile au fost salvate.');
+    saveFeedCodes(codes, done.join(' '));
   } }));
   box.appendChild(document.createTextNode(' '));
-  box.appendChild(el('button', { class: 'link small', type: 'button', text: 'Renunță', onclick: function () { tech.feedRemove = {}; renderFeedPending(); renderFeedList(); } }));
+  box.appendChild(el('button', { class: 'link small', type: 'button', text: 'Renunță', onclick: function () {
+    tech.feedRemove = {};
+    var again = cats ? api('GET', 'bapp-product-categories').then(function (r) { tech.productCategories = r.categories || {}; tech.catDirty = false; updateCatState(); }) : Promise.resolve();
+    again.catch(function (e) { toast('Eroare: ' + e.message); }).then(function () { renderFeedPending(); renderFeedList(); });
+  } }));
 }
 ['tech-feed-q', 'tech-feed-f'].forEach(function (id) {
   $(id).addEventListener(id === 'tech-feed-q' ? 'input' : 'change', function () { tech.feedPage = 0; renderFeedList(); });
@@ -1323,7 +1334,7 @@ function categorySelect(value, firstLabel, attrs) {
   return sel;
 }
 
-function categoryInput(p) {
+function categoryInput(p, opts) {
   var mode = tech.mapping.categoryMode || 'new';
   var box = el('div', { class: 'small' });
   if (mode === 'off') { box.appendChild(badge(['categoria nu se exportă', 'b-muted'])); return box; }
@@ -1336,11 +1347,11 @@ function categoryInput(p) {
   input.addEventListener('change', function () {
     var v = input.value.trim();
     if (v) tech.productCategories[p.code] = v; else delete tech.productCategories[p.code];
-    tech.catDirty = true; updateCatState(); renderFeedList();
+    tech.catDirty = true; updateCatState(); renderFeedList(); renderFeedPending();
   });
   box.appendChild(input);
   var marks = el('div', { class: 'row', style: 'gap:4px;margin-top:3px' });
-  if (!p.existing) marks.appendChild(badge(['produs nou', 'b-info']));
+  if (!p.existing && !(opts && opts.inFeedList)) marks.appendChild(badge(['produs nou', 'b-info'])); // în listă apare deja lângă cod
   if (chosen) marks.appendChild(badge(['aleasă de tine', 'b-ok']));
   else if (!p.existing || mode === 'all') marks.appendChild(proposed ? badge(['propusă', 'b-muted']) : badge(['fără categorie', 'b-warn']));
   box.appendChild(marks);

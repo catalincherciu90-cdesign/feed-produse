@@ -209,7 +209,16 @@ describe('salvarea listei /date-tehnice.xml pornește sincronizarea cu lista inc
     expect(res.dispatched).toBe(true);
     const body = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body.inputs.feed_codes_saved_at).toBe(String(res.savedAt));
-    expect(await decodeCodesInput(body.inputs.feed_codes)).toEqual({ savedAt: res.savedAt, codes: ['BR-1', 'BR-2'], categories: { 'BR-1': 'Cat A' } });
+    expect(await decodeCodesInput(body.inputs.feed_codes)).toEqual({ savedAt: res.savedAt, codes: ['BR-1', 'BR-2'], categories: { 'BR-1': 'Cat A', 'BR-X': 'Alta' } });
+  });
+
+  it('trimite categoria pusă pe codul din feed (BR-…) chiar dacă în listă e scris codul Braytron', async () => {
+    const kv = new FakeKV();
+    kv.store.set(KV_KEYS.bappProductCategories, JSON.stringify({ 'BR-BD60-03280': 'Iluminat pe sina/Sina de iluminat' }));
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    await putCodes(kv, { codes: ['BD60-03280'], sync: true }, f as unknown as typeof fetch);
+    const body = JSON.parse((f.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect((await decodeCodesInput(body.inputs.feed_codes))?.categories).toEqual({ 'BR-BD60-03280': 'Iluminat pe sina/Sina de iluminat' });
   });
 
   it('salvează lista chiar dacă GitHub refuză pornirea și spune de ce', async () => {
