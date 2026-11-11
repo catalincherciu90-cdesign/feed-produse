@@ -11,7 +11,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Feed produse · Admin</title>
+<title>SpotVision Feed Hub · Admin</title>
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --border: #dde2e8;
@@ -118,7 +118,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 </head>
 <body>
 <div id="login" class="login card hidden">
-  <h2>Feed produse · Admin</h2>
+  <h2>SpotVision Feed Hub · Admin</h2>
   <p class="muted small">Introdu ADMIN_TOKEN, secretul setat în GitHub.</p>
   <form id="login-form">
     <label for="token">Token admin</label>
@@ -133,7 +133,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
 <div id="app" class="hidden">
   <header>
     <div class="bar">
-      <div class="brand">Feed <span>produse</span></div>
+      <div class="brand">SpotVision <span>Feed Hub</span></div>
       <nav id="tabs">
         <button data-tab="status" aria-current="page">Status</button>
         <button data-tab="products">Produse</button>

@@ -1,5 +1,5 @@
 {
-  "name": "feed-produse",
+  "name": "spotvision-feed-hub",
   "version": "1.0.0",
   "private": true,
   "description": "Sincronizare feed produse: stoc către CEL.ro și feed de disponibilitate pentru clienți (GitHub Actions + Cloudflare Worker gratuit).",

@@ -1,6 +1,8 @@
-# feed-produse
+# SpotVision Feed Hub
 
 Sincronizare automată, fără costuri, pentru feed-ul de produse spotvisionelectric.ro.
+
+> Numele tehnice rămân `feed-produse` (repo-ul GitHub, Worker-ul Cloudflare și adresa `feed-produse...workers.dev`): schimbarea lor ar crea un Worker nou, fără secrete, și ar strica linkurile date la CEL, Meta și Teamshare.
 
 Când apeși **„Sincronizează acum”** în panoul de admin:
 

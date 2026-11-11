@@ -29,7 +29,7 @@ export async function dispatchSync(
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'feed-produse-worker',
+      'User-Agent': 'spotvision-feed-hub',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(inputs ? { ref, inputs } : { ref }),

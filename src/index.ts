@@ -111,7 +111,7 @@ export default {
     }
 
     if (url.pathname === '/') {
-      return new Response('feed-produse: OK\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      return new Response('SpotVision Feed Hub: OK\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
     return new Response('Not found', { status: 404 });
   },
