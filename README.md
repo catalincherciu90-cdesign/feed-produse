@@ -69,7 +69,7 @@ Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 
 
 ## Catalogul pentru Facebook / Instagram
 
-URL: `https://feed-produse.catalincherciu90.workers.dev/facebook.xml`. Se conectează în **Meta Commerce Manager > Catalog > Surse de date > Adaugă articole > Feed de date > Programat**, cu actualizare zilnică sau orară.
+URL: `https://feed.spotvisionelectric.ro/facebook.xml`. Se conectează în **Meta Commerce Manager > Catalog > Surse de date > Adaugă articole > Feed de date > Programat**, cu actualizare zilnică sau orară.
 
 Format RSS cu câmpuri `g:` (formatul Google Merchant, acceptat de Meta). Pentru fiecare produs: `id` (codul), `title`, `description` (text curat din descriere; dacă lipsește, din intro sau din nume), `link`, `image_link` (poza mare `_big.jpg`), până la 10 `additional_image_link` din galerie, `availability`, `condition` (new), `price`, `brand`, `gtin` (doar EAN valid și unic) și `product_type` (categoria).
 
@@ -104,7 +104,7 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 
 **Traducerile** (Black → Negru, 2 Years → 2 ani, Not-Dimmable → Nedimabil etc.) se editează din același loc. Valorile fără traducere rămân ca la producător.
 
-**Feed pentru importul în site:** `https://feed-produse.catalincherciu90.workers.dev/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
+**Feed pentru importul în site:** `https://feed.spotvisionelectric.ro/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
 
 Structura e ca exportul Teamshare (`<products><product>`, valori în CDATA, celulele goale lipsesc). **Primul `<product>` e rândul de titluri**, cu numele exact al coloanei din șablonul de import (ex. `Culoarea corpului: - P39493`); în Teamshare, la Feed In, bifează „First row has column names”. Tag-urile sunt numele coloanelor fără diacritice, cu `_` în loc de spații și semne, și cu ID-ul proprietății, pentru că șablonul are coloane cu același nume: `Product_Code`, `Culoarea_corpului_P39493`, `ProductImage_P39360`, `AddImages_P39379`.
 
@@ -180,7 +180,7 @@ Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze p
 
 ## Panoul de admin
 
-Adresa: **https://feed-produse.catalincherciu90.workers.dev/admin**. Te loghezi cu `ADMIN_TOKEN`, secretul din GitHub. Sesiunea ține până închizi tab-ul.
+Adresa: **https://feed.spotvisionelectric.ro/admin**. Linkurile vechi `https://feed-produse.catalincherciu90.workers.dev/...` trimit automat (301) la aceeași pagină pe domeniul propriu, deci cele date deja la CEL, Meta sau Teamshare merg în continuare. Te loghezi cu `ADMIN_TOKEN`, secretul din GitHub. Sesiunea ține până închizi tab-ul.
 
 | Tab | Ce face |
 |---|---|

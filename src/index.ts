@@ -9,6 +9,9 @@ import { runAutoSync } from './autoSync';
 import { KV_KEYS } from './kv';
 import type { TriggerEnv } from './trigger';
 
+/** Domeniul public al feed-urilor și al panoului. Linkurile vechi *.workers.dev trimit aici (301). */
+export const PUBLIC_HOST = 'feed.spotvisionelectric.ro';
+
 interface WorkerEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
   CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
@@ -36,6 +39,12 @@ export default {
 
   async fetch(req: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(req.url);
+
+    // Linkurile vechi (feed-produse...workers.dev) merg mai departe, spre domeniul propriu.
+    // Excepție: cererile care vin deja prin domeniul propriu (antetul X-Forwarded-Host).
+    if (url.hostname.endsWith('.workers.dev') && req.headers.get('X-Forwarded-Host') !== PUBLIC_HOST) {
+      return Response.redirect(`https://${PUBLIC_HOST}${url.pathname}${url.search}`, 301);
+    }
 
     // Panoul de admin: /admin și /admin/api/*
     const admin = await handleAdmin(req, env, url);
