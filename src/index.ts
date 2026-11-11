@@ -12,6 +12,11 @@ import type { TriggerEnv } from './trigger';
 /** Domeniul public al feed-urilor și al panoului. Linkurile vechi *.workers.dev trimit aici (301). */
 export const PUBLIC_HOST = 'feed.spotvisionelectric.ro';
 
+/** Feed-urile (.xml) și fișele (/fise/…) se servesc direct pe workers.dev, fără redirect. */
+export function isMachinePath(path: string): boolean {
+  return /^\/[\w.-]+\.xml$/.test(path) || path.startsWith('/fise/');
+}
+
 interface WorkerEnv extends TriggerEnv {
   FEED_KV: KVNamespace;
   CLIENT_FEED_TOKEN?: string; // dacă e setat, feed-ul cere ?token=...
@@ -68,8 +73,10 @@ export default {
     const url = new URL(req.url);
 
     // Linkurile vechi (feed-produse...workers.dev) merg mai departe, spre domeniul propriu.
-    // Excepție: cererile care vin deja prin domeniul propriu (antetul X-Forwarded-Host).
-    if (url.hostname.endsWith('.workers.dev') && req.headers.get('X-Forwarded-Host') !== PUBLIC_HOST) {
+    // Excepții: cererile care vin deja prin domeniul propriu (antetul X-Forwarded-Host) și feed-urile
+    // și fișele, citite de programe (Teamshare, CEL, Meta): găzduirea din fața domeniului propriu are
+    // o protecție anti-bot care le poate trimite o pagină HTML în loc de XML, deci le servim direct.
+    if (url.hostname.endsWith('.workers.dev') && req.headers.get('X-Forwarded-Host') !== PUBLIC_HOST && !isMachinePath(url.pathname)) {
       return Response.redirect(`https://${PUBLIC_HOST}${url.pathname}${url.search}`, 301);
     }
 

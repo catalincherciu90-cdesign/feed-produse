@@ -71,7 +71,7 @@ Prețul vine din câmpul `PRET_LISTA` al feed-ului Teamshare (preț **cu TVA**, 
 
 ## Catalogul pentru Facebook / Instagram
 
-URL: `https://feed.spotvisionelectric.ro/facebook.xml`. Se conectează în **Meta Commerce Manager > Catalog > Surse de date > Adaugă articole > Feed de date > Programat**, cu actualizare zilnică sau orară.
+URL: `https://feed-produse.catalincherciu90.workers.dev/facebook.xml`. Se conectează în **Meta Commerce Manager > Catalog > Surse de date > Adaugă articole > Feed de date > Programat**, cu actualizare zilnică sau orară.
 
 Format RSS cu câmpuri `g:` (formatul Google Merchant, acceptat de Meta). Pentru fiecare produs: `id` (codul), `title`, `description` (text curat din descriere; dacă lipsește, din intro sau din nume), `link`, `image_link` (poza mare `_big.jpg`), până la 10 `additional_image_link` din galerie, `availability`, `condition` (new), `price`, `brand`, `gtin` (doar EAN valid și unic) și `product_type` (categoria).
 
@@ -106,13 +106,13 @@ Tab-ul **Date tehnice** din panou generează un fișier `.xlsx` în formatul de 
 
 **Traducerile** (Black → Negru, 2 Years → 2 ani, Not-Dimmable → Nedimabil etc.) se editează din același loc. Valorile fără traducere rămân ca la producător.
 
-**Feed pentru importul în site:** `https://feed.spotvisionelectric.ro/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
+**Feed pentru importul în site:** `https://feed-produse.catalincherciu90.workers.dev/date-tehnice.xml`. Conține **doar produsele din lista salvată** în panou (butonul „Salvează lista de mai sus pentru feed”), cu aceeași mapare și aceleași traduceri ca fișierul `.xlsx`, și se regenerează la fiecare „Sincronizează acum”. Dacă feed-ul producătorului nu răspunde, se folosesc ultimele date bune.
 
 **Codul produsului în feed:** poți scrie fie codul tău, fie codul Braytron. Un produs care există deja pe site apare cu codul tău legat de el. Un produs nou primește automat prefixul din Mapare (implicit `BR-`): `BD60-03280` devine `BR-BD60-03280`, iar codul Braytron rămâne în coloana „Cod Furnizor”.
 
 **Categoria pe produs:** în lista „Produse în feed”, fiecare produs are o căsuță de căutare a categoriei: scrii o parte din nume (de exemplu „sina mag”; fără diacritice, cuvintele în orice ordine) și alegi din categoriile site-ului; × golește alegerea. Alegi categoria, apoi **„Salvează și regenerează feed-ul”** din bara galbenă (sau „Renunță”). La un produs existent, o categorie aleasă aici înlocuiește la import categoria de pe site; „Rămâne cea actuală” nu o schimbă.
 
-**Fișa tehnică în feed (coloana File):** `/date-tehnice.xml` pune în coloana standard `File` linkul fișei tehnice PDF Braytron, servită de pe domeniul tău: `https://feed.spotvisionelectric.ro/fise/BD60-03280.pdf` (codul Braytron). Worker-ul o aduce de la bapp.ro și o ține o zi în cache-ul Cloudflare; linkul bapp.ro nu apare pe site pentru că are ID-ul privat al feed-ului tău (același ID deschide feed-ul cu prețuri și stocuri). Implicit fișa se pune doar la produsele noi și la cele existente care nu au niciun fișier pe site (citit din câmpul `File` al feed-ului tău), ca să nu înlocuiască fișele și declarațiile CE urcate deja. Se schimbă din Mapare: „la toate” sau „nu pune fișa”.
+**Fișa tehnică în feed (coloana File):** `/date-tehnice.xml` pune în coloana standard `File` linkul fișei tehnice PDF Braytron, servită prin Worker: `https://feed-produse.catalincherciu90.workers.dev/fise/BD60-03280.pdf` (codul Braytron). Worker-ul o aduce de la bapp.ro și o ține o zi în cache-ul Cloudflare; linkul bapp.ro nu apare pe site pentru că are ID-ul privat al feed-ului tău (același ID deschide feed-ul cu prețuri și stocuri). Implicit fișa se pune doar la produsele noi și la cele existente care nu au niciun fișier pe site (citit din câmpul `File` al feed-ului tău), ca să nu înlocuiască fișele și declarațiile CE urcate deja. Se schimbă din Mapare: „la toate” sau „nu pune fișa”.
 
 **Poze + fișă tehnică pe produs:** în lista „Produse în feed”, butonul **„Poze + fișă (.zip)”** descarcă o arhivă cu toate pozele produsului, în ordine (`BR-BD60-03280-1.webp`, `-2.webp`…), și fișa tehnică PDF a producătorului în română (`BR-BD60-03280-fisa-tehnica.pdf`). Fișierele vin de la Braytron prin Worker (ruta `/admin/api/file`, doar cu token de admin și doar pentru adresele de poze și fișe Braytron), pentru că serverele lor nu permit descărcarea direct din panou. Dacă un fișier nu se poate descărca, arhiva conține `LIPSESC.txt` cu motivul.
 
@@ -190,7 +190,7 @@ Workflow-ul trebuie să existe pe branch-ul implicit al repoului ca să ruleze p
 
 ## Panoul de admin
 
-Adresa: **https://feed.spotvisionelectric.ro/admin**. Linkurile vechi `https://feed-produse.catalincherciu90.workers.dev/...` trimit automat (301) la aceeași pagină pe domeniul propriu, deci cele date deja la CEL, Meta sau Teamshare merg în continuare. Te loghezi cu `ADMIN_TOKEN`, secretul din GitHub. Sesiunea ține până închizi tab-ul.
+Adresa: **https://feed.spotvisionelectric.ro/admin**. Linkurile `https://feed-produse.catalincherciu90.workers.dev/...` ale panoului trimit automat (301) la domeniul propriu. **Excepție: feed-urile (`/feed.xml`, `/cel.xml`, `/facebook.xml`, `/date-tehnice.xml`) și fișele (`/fise/…`) se servesc direct pe workers.dev**, fără redirect: găzduirea (LiteSpeed) din fața domeniului propriu are o protecție anti-bot care trimite unor programe de import (ex. `python-requests`) o pagină HTML „One moment, please...” în loc de XML. Pentru Teamshare, CEL și Meta folosește linkurile workers.dev (le arată și panoul). Te loghezi cu `ADMIN_TOKEN`, secretul din GitHub. Sesiunea ține până închizi tab-ul.
 
 | Tab | Ce face |
 |---|---|

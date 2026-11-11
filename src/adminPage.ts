@@ -530,8 +530,11 @@ function stat(label, value, hint) {
   return el('div', { class: 'stat' }, [el('div', { class: 'label', text: label }), el('div', { class: 'value', text: value }), hint ? el('div', { class: 'hint', text: hint }) : null]);
 }
 
+// Linkurile pentru platforme (Teamshare, CEL, Meta) sunt cele directe, servite de Cloudflare:
+// domeniul propriu trece prin găzduirea cu protecție anti-bot.
+var FEED_ORIGIN = 'https://feed-produse.catalincherciu90.workers.dev';
 function feedLink(title, path) {
-  var url = location.origin + path;
+  var url = FEED_ORIGIN + path;
   var copy = el('button', { class: 'btn', type: 'button', text: 'Copiază', onclick: function () {
     (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { toast('Link copiat'); }, function () { toast(url); });
   } });
@@ -1200,7 +1203,7 @@ function renderTechFeedInfo() {
   var n = (tech.feedCodes || []).length;
   var st = state.overview && state.overview.status && state.overview.status.techFeed;
   root.appendChild(document.createTextNode('Link: '));
-  root.appendChild(el('a', { href: '/date-tehnice.xml', target: '_blank', rel: 'noopener', text: location.origin + '/date-tehnice.xml' }));
+  root.appendChild(el('a', { href: FEED_ORIGIN + '/date-tehnice.xml', target: '_blank', rel: 'noopener', text: FEED_ORIGIN + '/date-tehnice.xml' }));
   root.appendChild(document.createTextNode(' · ' + (n ? fmtNum(n) + ' coduri salvate' : 'nicio listă salvată')));
   if (st) root.appendChild(document.createTextNode(' · la ultima sincronizare: ' + fmtNum(st.products) + ' produse în feed' + (st.missing ? ', ' + fmtNum(st.missing) + ' negăsite' : '')));
 }
@@ -1541,7 +1544,7 @@ function renderMapping() {
         return s;
       })(),
       el('label', { for: 'map-dsurl', style: 'margin-top:8px', text: 'Adresa de la care se servesc fișele' }),
-      el('input', { id: 'map-dsurl', value: m.datasheetUrl == null ? 'https://feed.spotvisionelectric.ro/fise/' : m.datasheetUrl, maxlength: '200' }),
+      el('input', { id: 'map-dsurl', value: m.datasheetUrl == null || m.datasheetUrl === 'https://feed.spotvisionelectric.ro/fise/' ? FEED_ORIGIN + '/fise/' : m.datasheetUrl, maxlength: '200' }),
       el('div', { class: 'help', text: 'Linkul pus în File: adresa + codul Braytron + .pdf (ex. …/fise/BD60-03280.pdf). Fișa vine de la Braytron prin Worker; linkul Braytron nu apare pe site, pentru că are ID-ul privat al feed-ului tău.' })
     ])
   ]));
@@ -1572,7 +1575,7 @@ function collectMapping() {
   });
   return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim(),
     categoryMode: $('map-catmode') ? $('map-catmode').value : 'new', categories: categories, brandName: $('map-brand').value.trim(),
-    datasheetMode: $('map-dsmode') ? $('map-dsmode').value : 'missing', datasheetUrl: $('map-dsurl') ? $('map-dsurl').value.trim() : 'https://feed.spotvisionelectric.ro/fise/' };
+    datasheetMode: $('map-dsmode') ? $('map-dsmode').value : 'missing', datasheetUrl: $('map-dsurl') ? $('map-dsurl').value.trim() : FEED_ORIGIN + '/fise/' };
 }
 function saveMapping() {
   api('PUT', 'bapp-mapping', collectMapping()).then(function (res) {

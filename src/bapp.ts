@@ -82,8 +82,14 @@ export interface BappMapping {
   datasheetUrl?: string;
 }
 
-/** Fișele se servesc de pe domeniul tău: linkul Braytron conține ID-ul privat al feed-ului. */
-export const DEFAULT_DATASHEET_URL = 'https://feed.spotvisionelectric.ro/fise/';
+/**
+ * Fișele se servesc prin Worker (linkul Braytron conține ID-ul privat al feed-ului), direct pe
+ * workers.dev: domeniul propriu trece prin găzduirea cu protecție anti-bot, care poate trimite
+ * programelor de import o pagină HTML în loc de PDF.
+ */
+export const DEFAULT_DATASHEET_URL = 'https://feed-produse.catalincherciu90.workers.dev/fise/';
+/** Valoarea implicită anterioară: mapările salvate cu ea trec automat pe cea nouă. */
+export const OLD_DATASHEET_URL = 'https://feed.spotvisionelectric.ro/fise/';
 
 // ---------------------------------------------------------------------------------------------
 // Maparea implicită. Sigure: denumirea românească din feed = numele coloanei Teamshare.
@@ -316,7 +322,8 @@ export function buildImportTable(
   const BRAND = 'BrandName';
   const FILE = 'File';
   const dsMode = mapping.datasheetMode || 'missing';
-  const dsUrl = mapping.datasheetUrl === undefined ? 'https://feed.spotvisionelectric.ro/fise/' : String(mapping.datasheetUrl || '');
+  const DS_DEFAULT = 'https://feed-produse.catalincherciu90.workers.dev/fise/';
+  const dsUrl = mapping.datasheetUrl === undefined || mapping.datasheetUrl === 'https://feed.spotvisionelectric.ro/fise/' ? DS_DEFAULT : String(mapping.datasheetUrl || '');
   const withFiles = data.withFiles || {};
   const brand = String(mapping.brandName || '').trim();
   const found: { code: string; existing: boolean; prod: { c: string; p: string[]; a: Record<string, string>; k?: string; d?: string } }[] = [];
@@ -675,7 +682,8 @@ export function validateMapping(raw: unknown, columns: readonly string[]): BappM
   const brandName = r.brandName === undefined ? 'Braytron' : str(r.brandName, 100, 'Producătorul').trim();
   const dsMode = r.datasheetMode === undefined ? 'missing' : r.datasheetMode;
   if (dsMode !== 'missing' && dsMode !== 'all' && dsMode !== 'off') throw new Error('datasheetMode trebuie să fie missing, all sau off');
-  const dsUrl = r.datasheetUrl === undefined ? DEFAULT_DATASHEET_URL : str(r.datasheetUrl, 200, 'Adresa fișelor').trim();
+  const dsIn = r.datasheetUrl === undefined ? DEFAULT_DATASHEET_URL : str(r.datasheetUrl, 200, 'Adresa fișelor').trim();
+  const dsUrl = dsIn === OLD_DATASHEET_URL ? DEFAULT_DATASHEET_URL : dsIn;
   if (dsUrl && !/^https:\/\/[^\s/]+\/\S*\/$/.test(dsUrl)) throw new Error('Adresa fișelor trebuie să înceapă cu https:// și să se termine cu /');
   return {
     brandName,

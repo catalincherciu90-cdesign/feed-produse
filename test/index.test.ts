@@ -1,14 +1,26 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { KV_KEYS } from '../src/kv';
-import worker, { PUBLIC_HOST } from '../src/index';
+import worker, { isMachinePath, PUBLIC_HOST } from '../src/index';
 
 const env = { FEED_KV: { get: async () => null } as unknown as KVNamespace } as never;
 
 describe('redirect spre domeniul propriu', () => {
   it('trimite linkurile workers.dev spre feed.spotvisionelectric.ro, păstrând calea și parametrii', async () => {
-    const res = await worker.fetch(new Request('https://feed-produse.x.workers.dev/cel.xml?token=abc'), env);
+    const res = await worker.fetch(new Request('https://feed-produse.x.workers.dev/admin?x=1'), env);
     expect(res.status).toBe(301);
-    expect(res.headers.get('Location')).toBe(`https://${PUBLIC_HOST}/cel.xml?token=abc`);
+    expect(res.headers.get('Location')).toBe(`https://${PUBLIC_HOST}/admin?x=1`);
+  });
+
+  it('feed-urile și fișele se servesc direct pe workers.dev (fără găzduirea cu anti-bot)', async () => {
+    for (const path of ['/cel.xml?token=abc', '/feed.xml', '/facebook.xml', '/date-tehnice.xml', '/fise/BD60-03280.pdf']) {
+      const res = await worker.fetch(new Request('https://feed-produse.x.workers.dev' + path), env);
+      expect(res.status, path).not.toBe(301);
+    }
+    expect(isMachinePath('/date-tehnice.xml')).toBe(true);
+    expect(isMachinePath('/fise/X.pdf')).toBe(true);
+    expect(isMachinePath('/admin')).toBe(false);
+    expect(isMachinePath('/status')).toBe(false);
+    expect(isMachinePath('/a/b.xml')).toBe(false);
   });
 
   it('nu redirecționează cererile venite prin domeniul propriu', async () => {
