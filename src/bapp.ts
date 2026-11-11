@@ -400,7 +400,9 @@ export function buildImportTable(
       }
     }
     // Fișa tehnică PDF (coloana File), servită de pe domeniul tău: /fise/<cod Braytron>.pdf
-    if (dsMode !== 'off' && dsUrl && f.prod.d && (dsMode === 'all' || !(f.existing && withFiles[f.code]))) {
+    // Oprit deocamdată (fișele se reiau altă dată): pune true ca fișa să intre din nou în feed.
+    const DATASHEETS_IN_FEED = false;
+    if (DATASHEETS_IN_FEED && dsMode !== 'off' && dsUrl && f.prod.d && (dsMode === 'all' || !(f.existing && withFiles[f.code]))) {
       row[FILE] = dsUrl + encodeURIComponent(f.prod.c) + '.pdf';
       used[FILE] = true;
     }

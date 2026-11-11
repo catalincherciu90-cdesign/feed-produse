@@ -1532,20 +1532,7 @@ function renderMapping() {
       el('div', { class: 'help', text: 'Ex.: BR- (codul tău BR-BG38-12581 = codul Braytron BG38-12581).' }),
       el('label', { for: 'map-brand', style: 'margin-top:12px', text: 'Producător (coloana BrandName)' }),
       el('input', { id: 'map-brand', value: m.brandName == null ? 'Braytron' : m.brandName, maxlength: '100', style: 'max-width:220px' }),
-      el('div', { class: 'help', text: 'Se pune la toate produsele din fișier și din feed. Gol = nu se exportă.' }),
-      el('label', { for: 'map-dsmode', style: 'margin-top:12px', text: 'Fișa tehnică PDF (coloana File)' }),
-      (function () {
-        var s = el('select', { id: 'map-dsmode', style: 'max-width:420px' }, [
-          el('option', { value: 'missing', text: 'La produsele noi și la cele fără fișiere pe site (recomandat)' }),
-          el('option', { value: 'all', text: 'La toate (înlocuiește fișierele de pe site, ex. declarațiile CE)' }),
-          el('option', { value: 'off', text: 'Nu pune fișa' })
-        ]);
-        s.value = m.datasheetMode || 'missing';
-        return s;
-      })(),
-      el('label', { for: 'map-dsurl', style: 'margin-top:8px', text: 'Adresa de la care se servesc fișele' }),
-      el('input', { id: 'map-dsurl', value: m.datasheetUrl == null || m.datasheetUrl === 'https://feed.spotvisionelectric.ro/fise/' ? FEED_ORIGIN + '/fise/' : m.datasheetUrl, maxlength: '200' }),
-      el('div', { class: 'help', text: 'Linkul pus în File: adresa + codul Braytron + .pdf (ex. …/fise/BD60-03280.pdf). Fișa vine de la Braytron prin Worker; linkul Braytron nu apare pe site, pentru că are ID-ul privat al feed-ului tău.' })
+      el('div', { class: 'help', text: 'Se pune la toate produsele din fișier și din feed. Gol = nu se exportă.' })
     ])
   ]));
   renderCategories(root);
@@ -1575,7 +1562,8 @@ function collectMapping() {
   });
   return { rules: rules, translate: $('map-translate').checked, translations: translations, imageSeparator: $('map-sep').value || '#', codePrefix: $('map-prefix').value.trim(),
     categoryMode: $('map-catmode') ? $('map-catmode').value : 'new', categories: categories, brandName: $('map-brand').value.trim(),
-    datasheetMode: $('map-dsmode') ? $('map-dsmode').value : 'missing', datasheetUrl: $('map-dsurl') ? $('map-dsurl').value.trim() : FEED_ORIGIN + '/fise/' };
+    // Fișele în feed sunt oprite deocamdată: păstrăm setările salvate, fără să le arătăm.
+    datasheetMode: tech.mapping.datasheetMode || 'missing', datasheetUrl: tech.mapping.datasheetUrl == null ? FEED_ORIGIN + '/fise/' : tech.mapping.datasheetUrl };
 }
 function saveMapping() {
   api('PUT', 'bapp-mapping', collectMapping()).then(function (res) {

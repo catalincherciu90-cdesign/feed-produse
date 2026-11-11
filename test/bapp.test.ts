@@ -146,27 +146,17 @@ describe('feed producător (bapp.ro)', () => {
     expect(out).toContain('BR-X-fisa-tehnica.pdf');
   });
 
-  it('fișa tehnică în coloana File: la produse noi și la cele fără fișiere pe site; linkul trece prin Worker', () => {
+  it('fișele tehnice nu intră în feed deocamdată (oprite), în niciun mod', () => {
     const d = {
       ...data,
-      products: { ...data.products, 'BH07-04101': { ...data.products['BH07-04101'], d: 'BH07-04101_RO.pdf' }, 'BA13-60920': { ...data.products['BA13-60920'], d: 'BA13-60920_RO.pdf' } },
-      index: { 'BR-BH07-04101': 'BH07-04101', 'BR-BA13-60920': 'BA13-60920' },
-      withFiles: { 'BR-BH07-04101': 1 as const }, // are deja fișă pe site
+      products: { ...data.products, 'BA13-60920': { ...data.products['BA13-60920'], d: 'BA13-60920_RO.pdf' } },
+      index: { 'BR-BA13-60920': 'BA13-60920' },
     };
-    const file = (t: { rows: string[][] }, code: string) => {
-      const i = t.rows[0].indexOf('File');
-      return i < 0 ? undefined : t.rows.find((r) => r[0] === code)![i];
-    };
-    const t = buildImportTable(['BR-BH07-04101', 'BR-BA13-60920'], d, defaultMapping(), translateValue, TEAMSHARE_COLUMNS);
-    expect(file(t, 'BR-BH07-04101')).toBe(''); // existent cu fișiere: nu se atinge
-    expect(file(t, 'BR-BA13-60920')).toBe('https://feed-produse.catalincherciu90.workers.dev/fise/BA13-60920.pdf');
-    expect(JSON.stringify(t.rows)).not.toContain('bapp.ro'); // ID-ul privat nu apare
-    const all = buildImportTable(['BR-BH07-04101'], d, { ...defaultMapping(), datasheetMode: 'all' }, translateValue, TEAMSHARE_COLUMNS);
-    expect(file(all, 'BR-BH07-04101')).toBe('https://feed-produse.catalincherciu90.workers.dev/fise/BH07-04101.pdf');
-    const off = buildImportTable(['BR-BA13-60920'], d, { ...defaultMapping(), datasheetMode: 'off' }, translateValue, TEAMSHARE_COLUMNS);
-    expect(file(off, 'BR-BA13-60920')).toBeUndefined();
-    expect(TEAMSHARE_COLUMNS).toContain('File');
-    expect(buildTechFeedXml(t.rows)).toContain('<File><![CDATA[https://feed-produse.catalincherciu90.workers.dev/fise/BA13-60920.pdf]]></File>');
+    for (const datasheetMode of ['missing', 'all', 'off']) {
+      const t = buildImportTable(['BR-BA13-60920'], d, { ...defaultMapping(), datasheetMode }, translateValue, TEAMSHARE_COLUMNS);
+      expect(t.rows[0]).not.toContain('File');
+      expect(buildTechFeedXml(t.rows)).not.toContain('<File>');
+    }
   });
 
   it('validează setările fișei', () => {
