@@ -14,6 +14,7 @@ export interface BappProduct {
   p: string[]; // poze, în ordine
   a: Record<string, string>; // atribut (slug) -> valoare
   k?: string; // categoria sugerată pentru acest produs (regulă după nume / mapare manuală / învățată)
+  d?: string; // fișa tehnică PDF: numele fișierului (după datasheetBase) sau linkul complet
 }
 
 export interface BappData {
@@ -21,6 +22,8 @@ export interface BappData {
   source: string; // de unde a fost citit (fără parametri)
   attributes: Record<string, { title: string; count: number }>;
   products: Record<string, BappProduct>; // cheie: codul producătorului
+  /** Începutul comun al linkurilor de fișă tehnică (ex. https://bapp.ro/product-datasheet/<id>/). */
+  datasheetBase?: string;
   index: Record<string, string>; // codul tău (ex. BR-BG38-12581) -> codul producătorului
   matched: { byCode: number; byEan: number };
   /**
@@ -409,6 +412,80 @@ export function buildImportTable(
  * Fișier .xlsx minimal (o foaie, text inline), fără biblioteci: arhivă ZIP fără compresie.
  * Întoarce octeții fișierului.
  */
+/**
+ * Arhivă .zip fără compresie (pozele webp și PDF-urile sunt deja comprimate).
+ * Rulează în browser (injectată în panou), de aceea nu folosește nimic din afara ei.
+ */
+export function buildZip(files: { name: string; data: Uint8Array }[]): Uint8Array {
+  const enc = new TextEncoder();
+  const table: number[] = [];
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table.push(c >>> 0);
+  }
+  const crc32 = function (b: Uint8Array): number {
+    let c = 0xffffffff;
+    for (let i = 0; i < b.length; i++) c = table[(c ^ b[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  // Data și ora fișierelor (format DOS), ca arhiva să nu arate 1980-00-00
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const parts: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const data = f.data;
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true); // nume în UTF-8
+    local.setUint16(10, dosTime, true);
+    local.setUint16(12, dosDate, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(local.buffer), name, data);
+    const cd = new DataView(new ArrayBuffer(46));
+    cd.setUint32(0, 0x02014b50, true);
+    cd.setUint16(4, 20, true);
+    cd.setUint16(6, 20, true);
+    cd.setUint16(8, 0x0800, true);
+    cd.setUint16(12, dosTime, true);
+    cd.setUint16(14, dosDate, true);
+    cd.setUint32(16, crc, true);
+    cd.setUint32(20, data.length, true);
+    cd.setUint32(24, data.length, true);
+    cd.setUint16(28, name.length, true);
+    cd.setUint32(42, offset, true);
+    central.push(new Uint8Array(cd.buffer), name);
+    offset += 30 + name.length + data.length;
+  }
+  let cdSize = 0;
+  for (const c of central) cdSize += c.length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true);
+  end.setUint32(16, offset, true);
+  const all = parts.concat(central, [new Uint8Array(end.buffer)]);
+  let total = 0;
+  for (const a of all) total += a.length;
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const a of all) {
+    out.set(a, pos);
+    pos += a.length;
+  }
+  return out;
+}
+
 export function buildXlsx(rows: string[][], sheetName: string): Uint8Array {
   const enc = new TextEncoder();
   const xmlEsc = function (s: string): string {

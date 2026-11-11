@@ -52,6 +52,7 @@ export function parseBapp(
 
   const attributes: BappData['attributes'] = {};
   const products: BappData['products'] = {};
+  let datasheetBase = '';
   for (const raw of list) {
     const p = raw as Record<string, unknown>;
     const code = txt(p.code);
@@ -62,7 +63,13 @@ export function parseBapp(
       .map((ph) => txt(ph.url))
       .filter((u) => /^https?:\/\//i.test(u));
     const a: Record<string, string> = {};
+    let datasheet = '';
     for (const s of arr((p.sections as Record<string, unknown> | undefined)?.section as unknown)) {
+      // Fișa tehnică PDF a producătorului (secțiunea cu fișiere; linkul conține /product-datasheet/)
+      for (const f of arr(((s as Record<string, unknown>).files as Record<string, unknown> | undefined)?.file as unknown)) {
+        const u = txt((f as Record<string, unknown>).url);
+        if (!datasheet && /^https:\/\/[^/]+\/product-datasheet\/.+\.pdf$/i.test(u)) datasheet = u;
+      }
       for (const c of arr(((s as Record<string, unknown>).categories as Record<string, unknown> | undefined)?.category as unknown)) {
         for (const at of arr(((c as Record<string, unknown>).attributes as Record<string, unknown> | undefined)?.attribute as unknown)) {
           const atr = at as Record<string, unknown>;
@@ -76,6 +83,12 @@ export function parseBapp(
       }
     }
     products[code] = { c: code, e: txt(p.code_ean) || undefined, n: txt(p.name) || undefined, p: photos, a };
+    if (datasheet) {
+      // Păstrăm o singură dată începutul linkului, ca datele salvate să rămână mici.
+      const base = datasheet.slice(0, datasheet.lastIndexOf('/') + 1);
+      if (!datasheetBase) datasheetBase = base;
+      products[code].d = base === datasheetBase ? datasheet.slice(base.length) : datasheet;
+    }
   }
 
   const byEan = new Map<string, string>();
@@ -148,6 +161,7 @@ export function parseBapp(
     source: opts.source,
     attributes,
     products,
+    ...(datasheetBase ? { datasheetBase } : {}),
     index,
     matched: { byCode, byEan: byEanCount },
   };

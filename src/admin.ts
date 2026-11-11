@@ -62,6 +62,28 @@ async function readBody(req: Request, max = MAX_BODY): Promise<unknown> {
 }
 
 /** Întoarce un Response dacă ruta e a panoului, altfel null. */
+/**
+ * Fișierele producătorului pe care panoul le poate descărca prin Worker (pozele și fișa tehnică PDF).
+ * Serverele Braytron nu permit descărcarea direct din pagina panoului (fără CORS), așa că Worker-ul
+ * le aduce el. Doar aceste adrese, ca ruta să nu poată fi folosită pentru altceva.
+ */
+const FILE_SOURCES: { host: string; path: RegExp }[] = [
+  { host: 'cdn.braytron.center', path: /^\/images\/[\w.-]+\.(webp|jpe?g|png)$/i },
+  { host: 'bapp.ro', path: /^\/product-datasheet\/[\w-]+\/[\w.-]+\.pdf$/i },
+];
+
+export function allowedFileUrl(raw: string | null): URL | null {
+  if (!raw) return null;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || u.search || u.hash) return null;
+  return FILE_SOURCES.some((s) => s.host === u.hostname && s.path.test(u.pathname)) ? u : null;
+}
+
 export async function handleAdmin(
   req: Request,
   env: AdminEnv,
@@ -220,6 +242,21 @@ export async function handleAdmin(
         const settings = validateAutoSync(await readBody(req, 1024));
         await kv.put(KV_KEYS.autoSync, JSON.stringify(settings));
         return json({ ok: true, ...settings });
+      }
+
+      case 'GET /admin/api/file': {
+        // Poză sau fișă tehnică de la producător, pentru butonul „Poze + fișă” din Date tehnice.
+        const target = allowedFileUrl(url.searchParams.get('url'));
+        if (!target) return error('Adresă nepermisă: doar pozele și fișele tehnice Braytron', 400);
+        const res = await (fetchFn ?? fetch)(target.toString(), { redirect: 'error' });
+        if (!res.ok || !res.body) return error(`Producătorul a răspuns cu HTTP ${res.status} pentru ${target.pathname}`, 502);
+        return new Response(res.body, {
+          headers: {
+            'Content-Type': res.headers.get('Content-Type') ?? 'application/octet-stream',
+            'Cache-Control': 'private, max-age=3600',
+            ...SECURITY_HEADERS,
+          },
+        });
       }
 
       case 'POST /admin/api/sync': {

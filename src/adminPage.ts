@@ -3,7 +3,7 @@
  * JS-ul e servit separat la /admin/app.js (CSP fără 'unsafe-inline' pentru scripturi).
  * Toate datele din feed sunt puse în pagină doar prin textContent (fără innerHTML).
  */
-import { buildImportTable, buildXlsx, translateValue } from './bapp';
+import { buildImportTable, buildXlsx, buildZip, translateValue } from './bapp';
 
 export const ADMIN_HTML = String.raw`<!doctype html>
 <html lang="ro">
@@ -295,7 +295,8 @@ export const ADMIN_JS =
   'var BAPP = {\n' +
   '  translateValue: (' + translateValue.toString() + '),\n' +
   '  buildImportTable: (' + buildImportTable.toString() + '),\n' +
-  '  buildXlsx: (' + buildXlsx.toString() + ')\n' +
+  '  buildXlsx: (' + buildXlsx.toString() + '),\n' +
+  '  buildZip: (' + buildZip.toString() + ')\n' +
   '};\n' +
   String.raw`(function () {
 'use strict';
@@ -1053,10 +1054,14 @@ function renderFeedList() {
       el('td', { 'data-label': 'Nume', text: (prod && prod.n) || '' }),
       el('td', { class: 'num', 'data-label': 'Valori / poze', text: it.missing ? '-' : fmtNum(p.values) + ' / ' + fmtNum(p.photos) }),
       catCell,
-      el('td', { 'data-label': '' }, [el('button', { class: 'link small', type: 'button', style: removing ? '' : 'color:var(--bad)', text: removing ? 'Anulează' : 'Scoate din feed', onclick: function () {
-        if (removing) delete tech.feedRemove[p.code]; else tech.feedRemove[p.code] = true;
-        renderFeedPending(); renderFeedList();
-      } })])
+      el('td', { 'data-label': '' }, [
+        it.missing || !prod ? null : el('button', { class: 'btn small', type: 'button', title: 'Descarcă pozele și fișa tehnică PDF de la producător, într-o arhivă .zip', text: 'Poze + fișă (.zip)', onclick: function (ev) { downloadProductFiles(p.code, prod, ev.currentTarget); } }),
+        it.missing || !prod ? null : el('br'),
+        el('button', { class: 'link small', type: 'button', style: removing ? '' : 'color:var(--bad)', text: removing ? 'Anulează' : 'Scoate din feed', onclick: function () {
+          if (removing) delete tech.feedRemove[p.code]; else tech.feedRemove[p.code] = true;
+          renderFeedPending(); renderFeedList();
+        } })
+      ])
     ]);
     tb.appendChild(tr);
   });
@@ -1072,6 +1077,54 @@ function renderFeedList() {
     ]));
   }
 }
+// ---------- Poze + fișă tehnică, pe produs ----------
+/** Linkul fișei tehnice PDF a producătorului (sau '' dacă nu există). */
+function datasheetUrl(prod) {
+  if (!prod || !prod.d) return '';
+  return /^https?:/i.test(prod.d) ? prod.d : (tech.data.datasheetBase || '') + prod.d;
+}
+/** Un fișier de la producător, adus prin Worker (serverele lor nu permit descărcarea direct din panou). */
+function fetchProducerFile(u) {
+  return fetch('/admin/api/file?url=' + encodeURIComponent(u), { headers: { 'Authorization': 'Bearer ' + state.token } }).then(function (r) {
+    if (!r.ok) return r.json().catch(function () { return {}; }).then(function (b) { throw new Error(b.error || ('HTTP ' + r.status)); });
+    return r.arrayBuffer();
+  }).then(function (b) { return new Uint8Array(b); });
+}
+function downloadProductFiles(code, prod, btn) {
+  var photos = (prod.p || []).filter(Boolean);
+  var pdf = datasheetUrl(prod);
+  var jobs = photos.map(function (u, i) {
+    var ext = (u.split('?')[0].match(/\.(\w{3,4})$/) || [, 'webp'])[1].toLowerCase();
+    return { url: u, name: code + '-' + (i + 1) + '.' + ext, label: 'poza ' + (i + 1) };
+  });
+  if (pdf) jobs.push({ url: pdf, name: code + '-fisa-tehnica.pdf', label: 'fișa tehnică' });
+  if (!jobs.length) return toast('Producătorul nu are poze sau fișă tehnică pentru ' + code + '.');
+  var label = btn.textContent; btn.disabled = true;
+  var files = [], failed = [], done = 0;
+  btn.textContent = 'Se descarcă 0/' + jobs.length + '…';
+  // Câte două odată, ca să nu încarce degeaba Worker-ul.
+  var queue = jobs.slice();
+  function next() {
+    var j = queue.shift(); if (!j) return Promise.resolve();
+    return fetchProducerFile(j.url).then(function (data) { files.push({ name: j.name, data: data, order: jobs.indexOf(j) }); })
+      .catch(function (e) { failed.push(j.label + ' (' + e.message + ')'); })
+      .then(function () { done++; btn.textContent = 'Se descarcă ' + done + '/' + jobs.length + '…'; return next(); });
+  }
+  Promise.all([next(), next()]).then(function () {
+    if (!files.length) throw new Error('niciun fișier nu a putut fi descărcat: ' + failed.join('; '));
+    files.sort(function (a, b) { return a.order - b.order; });
+    if (failed.length) {
+      files.push({ name: 'LIPSESC.txt', data: new TextEncoder().encode('Nu s-au putut descărca:\r\n' + failed.join('\r\n') + '\r\n') });
+    }
+    var zip = BAPP.buildZip(files.map(function (f) { return { name: f.name, data: f.data }; }));
+    var a = el('a', { href: URL.createObjectURL(new Blob([zip], { type: 'application/zip' })), download: code + '-poze-si-fisa.zip' });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    toast(code + ': ' + (files.length - (failed.length ? 1 : 0)) + ' fișiere descărcate' + (failed.length ? '; lipsesc ' + failed.length + ' (vezi LIPSESC.txt în arhivă)' : '') + '.');
+  }).catch(function (e) { toast('Eroare la ' + code + ': ' + e.message); })
+    .then(function () { btn.disabled = false; btn.textContent = label; });
+}
+
 function renderFeedPending() {
   var box = $('tech-feed-pending'); clear(box);
   var n = Object.keys(tech.feedRemove).length;

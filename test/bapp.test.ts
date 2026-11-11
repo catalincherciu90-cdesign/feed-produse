@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildImportTable, buildTechFeedXml, buildXlsx, defaultMapping, DEFAULT_RULES, teamshareTag, translateValue, validateFeedCodes, validateMapping, validateProductCategories } from '../src/bapp';
+import { buildImportTable, buildTechFeedXml, buildXlsx, buildZip, defaultMapping, DEFAULT_RULES, teamshareTag, translateValue, validateFeedCodes, validateMapping, validateProductCategories } from '../src/bapp';
 import { parseBapp } from '../src/bappParse';
 import { TEAMSHARE_COLUMNS } from '../src/teamshareColumns';
 
@@ -25,6 +25,22 @@ const ours = [{ sku: 'BR-BH07-04101' }, { sku: 'ALT-COD', ean: '5949097727597' }
 const data = parseBapp(XML, ours, { codePrefix: 'BR-', source: 'bapp.ro', generatedAt: '2026-11-09T10:00:00Z' });
 
 describe('feed producător (bapp.ro)', () => {
+  it('citește linkul fișei tehnice PDF și păstrează începutul comun o singură dată', () => {
+    const files = (code: string) =>
+      `<section><categories/><files><file><filename>${code}_RO.pdf</filename><url>https://bapp.ro/product-datasheet/abc123/${code}_RO.pdf</url></file></files></section>` +
+      `<section><categories/><files><file><name>${code}.rar</name><url>https://cdn.braytron.center/3dfiles/${code}.rar</url></file></files></section>`;
+    const x = `<response><products>
+<product><code>A1</code><photos/><sections>${files('A1')}</sections></product>
+<product><code>A2</code><photos/><sections>${files('A2')}</sections></product>
+<product><code>A3</code><photos/><sections/></product>
+</products></response>`;
+    const d = parseBapp(x, [], { codePrefix: 'BR-', source: 's', generatedAt: 'x' });
+    expect(d.datasheetBase).toBe('https://bapp.ro/product-datasheet/abc123/');
+    expect(d.products.A1.d).toBe('A1_RO.pdf');
+    expect(d.products.A2.d).toBe('A2_RO.pdf');
+    expect(d.products.A3.d).toBeUndefined();
+  });
+
   it('citește produse, poze în ordine, atribute și leagă după cod sau EAN', () => {
     expect(Object.keys(data.products)).toEqual(['BH07-04101', 'BA13-60920']);
     expect(data.products['BH07-04101'].p).toEqual(['https://cdn.x/1.webp', 'https://cdn.x/2.webp']);
@@ -106,6 +122,25 @@ describe('feed producător (bapp.ro)', () => {
     const m = { ...defaultMapping(), productCategories: { 'BA13-60920': 'Categoria mea' } };
     const t = buildImportTable(['BA13-60920'], d, m, translateValue, TEAMSHARE_COLUMNS);
     expect(t.perProduct[0]).toMatchObject({ code: 'BR-BA13-60920', category: 'Categoria mea' });
+  });
+
+  it('arhiva .zip cu poze și fișă se poate deschide (verificat cu unzip)', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const img = new Uint8Array(256).map((_, i) => i);
+    const zip = buildZip([
+      { name: 'BR-X-1.webp', data: img },
+      { name: 'BR-X-fisa-tehnica.pdf', data: new TextEncoder().encode('%PDF-1.4 test') },
+    ]);
+    const dir = mkdtempSync(join(tmpdir(), 'zip-'));
+    const file = join(dir, 'a.zip');
+    writeFileSync(file, zip);
+    const out = execFileSync('unzip', ['-t', file]).toString();
+    expect(out).toMatch(/No errors detected/);
+    expect(out).toContain('BR-X-1.webp');
+    expect(out).toContain('BR-X-fisa-tehnica.pdf');
   });
 
   it('fără traducere, valorile rămân ca la producător', () => {

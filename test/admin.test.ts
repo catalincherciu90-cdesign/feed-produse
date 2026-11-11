@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleAdmin } from '../src/admin';
+import { allowedFileUrl, handleAdmin } from '../src/admin';
 import { celDecision, clientDecision } from '../src/decisions';
 import { KV_KEYS } from '../src/kv';
 import { decodeCodesInput } from '../src/codesInput';
@@ -242,6 +242,52 @@ describe('API sincronizare automată', () => {
     expect((await call('PUT', '/admin/api/auto-sync', { hours: 0 })).status).toBe(200);
     expect((await call('PUT', '/admin/api/auto-sync', { hours: 7 })).status).toBe(400);
     expect(await (await call('GET', '/admin/api/auto-sync')).json()).toMatchObject({ hours: 0 });
+  });
+});
+
+describe('fișiere de la producător (poze + fișă tehnică)', () => {
+  it('acceptă doar pozele și fișele tehnice Braytron', () => {
+    expect(allowedFileUrl('https://cdn.braytron.center/images/BD60-03280-1.webp')).not.toBeNull();
+    expect(allowedFileUrl('https://bapp.ro/product-datasheet/c7511a08/BD60-03280_RO.pdf')).not.toBeNull();
+    for (const bad of [
+      'http://cdn.braytron.center/images/a.webp', // fără https
+      'https://cdn.braytron.center/3dfiles/a.rar', // alt tip de fișier
+      'https://bapp.ro/feeds/x/product-attributes', // feed-ul, nu fișa
+      'https://evil.example/images/a.webp',
+      'https://cdn.braytron.center.evil.example/images/a.webp',
+      'https://cdn.braytron.center/images/../secret.webp',
+      'https://cdn.braytron.center/images/a.webp?x=1',
+      'https://user@cdn.braytron.center/images/a.webp',
+      'nu-e-link',
+      null,
+    ]) expect(allowedFileUrl(bad)).toBeNull();
+  });
+
+  it('aduce fișierul prin Worker, doar cu token de admin', async () => {
+    const kv = new FakeKV();
+    const env = { FEED_KV: kv as unknown as KVNamespace, ADMIN_TOKEN: TOKEN };
+    const f = vi.fn(async () => new Response('PDFDATA', { headers: { 'Content-Type': 'application/pdf' } }));
+    const u = 'https://bapp.ro/product-datasheet/abc/BD60-03280_RO.pdf';
+    const url = new URL('https://x.workers.dev/admin/api/file?url=' + encodeURIComponent(u));
+    const ok = await handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, url, f as unknown as typeof fetch);
+    expect(ok!.status).toBe(200);
+    expect(ok!.headers.get('Content-Type')).toBe('application/pdf');
+    expect(await ok!.text()).toBe('PDFDATA');
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe(u);
+    const noAuth = await handleAdmin(new Request(url), env, url, f as unknown as typeof fetch);
+    expect(noAuth!.status).toBe(401);
+    const badUrl = new URL('https://x.workers.dev/admin/api/file?url=' + encodeURIComponent('https://evil.example/a.pdf'));
+    expect((await handleAdmin(new Request(badUrl, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, badUrl, f as unknown as typeof fetch))!.status).toBe(400);
+    expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('spune clar când producătorul nu are fișierul', async () => {
+    const env = { FEED_KV: new FakeKV() as unknown as KVNamespace, ADMIN_TOKEN: TOKEN };
+    const f = vi.fn(async () => new Response('nu', { status: 404 }));
+    const url = new URL('https://x.workers.dev/admin/api/file?url=' + encodeURIComponent('https://cdn.braytron.center/images/X-1.webp'));
+    const res = await handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, url, f as unknown as typeof fetch);
+    expect(res!.status).toBe(502);
+    expect(((await res!.json()) as { error: string }).error).toMatch(/HTTP 404/);
   });
 });
 
