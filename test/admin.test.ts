@@ -274,11 +274,22 @@ describe('fișiere de la producător (poze + fișă tehnică)', () => {
     expect(ok!.headers.get('Content-Type')).toBe('application/pdf');
     expect(await ok!.text()).toBe('PDFDATA');
     expect((f.mock.calls[0] as unknown as [string])[0]).toBe(u);
+    // Workers aruncă eroare la redirect: 'error'; trebuie 'manual'
+    expect((f.mock.calls[0] as unknown as [string, RequestInit])[1].redirect).toBe('manual');
     const noAuth = await handleAdmin(new Request(url), env, url, f as unknown as typeof fetch);
     expect(noAuth!.status).toBe(401);
     const badUrl = new URL('https://x.workers.dev/admin/api/file?url=' + encodeURIComponent('https://evil.example/a.pdf'));
     expect((await handleAdmin(new Request(badUrl, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, badUrl, f as unknown as typeof fetch))!.status).toBe(400);
     expect(f).toHaveBeenCalledTimes(1);
+  });
+
+  it('o redirecționare de la producător e tratată ca eroare (nu o urmează)', async () => {
+    const env = { FEED_KV: new FakeKV() as unknown as KVNamespace, ADMIN_TOKEN: TOKEN };
+    const f = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'https://evil.example/' } }));
+    const url = new URL('https://x.workers.dev/admin/api/file?url=' + encodeURIComponent('https://cdn.braytron.center/images/X-1.webp'));
+    const res = await handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, url, f as unknown as typeof fetch);
+    expect(res!.status).toBe(502);
+    expect(((await res!.json()) as { error: string }).error).toMatch(/HTTP 302/);
   });
 
   it('spune clar când producătorul nu are fișierul', async () => {

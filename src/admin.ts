@@ -248,8 +248,17 @@ export async function handleAdmin(
         // Poză sau fișă tehnică de la producător, pentru butonul „Poze + fișă” din Date tehnice.
         const target = allowedFileUrl(url.searchParams.get('url'));
         if (!target) return error('Adresă nepermisă: doar pozele și fișele tehnice Braytron', 400);
-        const res = await (fetchFn ?? fetch)(target.toString(), { redirect: 'error' });
-        if (!res.ok || !res.body) return error(`Producătorul a răspuns cu HTTP ${res.status} pentru ${target.pathname}`, 502);
+        // redirect: 'manual' (Workers nu acceptă 'error'): o redirecționare e tratată ca eroare,
+        // ca ruta să nu poată fi dusă pe altă adresă decât cele permise.
+        let res: Response;
+        try {
+          res = await (fetchFn ?? fetch)(target.toString(), { redirect: 'manual' });
+        } catch (e) {
+          return error(`Nu am putut descărca ${target.pathname}: ${e instanceof Error ? e.message : String(e)}`, 502);
+        }
+        if (res.status < 200 || res.status >= 300 || !res.body) {
+          return error(`Producătorul a răspuns cu HTTP ${res.status} pentru ${target.pathname}`, 502);
+        }
         return new Response(res.body, {
           headers: {
             'Content-Type': res.headers.get('Content-Type') ?? 'application/octet-stream',
