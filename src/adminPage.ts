@@ -530,9 +530,9 @@ function stat(label, value, hint) {
   return el('div', { class: 'stat' }, [el('div', { class: 'label', text: label }), el('div', { class: 'value', text: value }), hint ? el('div', { class: 'hint', text: hint }) : null]);
 }
 
-// Linkurile pentru platforme (Teamshare, CEL, Meta) sunt cele directe, servite de Cloudflare:
-// domeniul propriu trece prin găzduirea cu protecție anti-bot.
-var FEED_ORIGIN = 'https://feed-produse.catalincherciu90.workers.dev';
+// Linkurile afișate în panou sunt pe domeniul tău. (Variantele directe pe workers.dev merg și ele,
+// fără găzduirea cu protecție anti-bot din fața domeniului.)
+var FEED_ORIGIN = 'https://feed.spotvisionelectric.ro';
 function feedLink(title, path) {
   var url = FEED_ORIGIN + path;
   var copy = el('button', { class: 'btn', type: 'button', text: 'Copiază', onclick: function () {
