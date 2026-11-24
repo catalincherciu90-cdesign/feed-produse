@@ -22,6 +22,8 @@ export const KV_KEYS = {
   autoSync: 'admin:auto-sync', // intervalul sincronizării automate, ales în panou
   autoSyncState: 'admin:auto-sync-state', // ultima pornire automată și eroarea, dacă a fost
   datasheetBase: 'bapp:datasheetBase', // începutul linkului fișelor Braytron (conține ID-ul privat; nu se arată public)
+  siteMedia: 'site:media', // pozele și fișierele tuturor produselor de pe site, pentru tab-ul „Poze site”
+  siteMediaHash: 'site:mediaHash',
   bappFeedCodes: 'admin:bapp-feed-codes', // codurile alese pentru /date-tehnice.xml
   bappProductCategories: 'admin:bapp-product-categories', // categoria aleasă pe produs (cod -> categorie)
   techFeed: 'feed:date-tehnice.xml', // feed XML cu date tehnice și poze pentru importul în Teamshare

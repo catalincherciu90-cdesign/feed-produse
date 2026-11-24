@@ -258,6 +258,12 @@ describe('fișiere de la producător (poze + fișă tehnică)', () => {
   it('acceptă doar pozele și fișele tehnice Braytron', () => {
     expect(allowedFileUrl('https://cdn.braytron.center/images/BD60-03280-1.webp')).not.toBeNull();
     expect(allowedFileUrl('https://bapp.ro/product-datasheet/c7511a08/BD60-03280_RO.pdf')).not.toBeNull();
+    // pozele și fișierele de pe site
+    expect(allowedFileUrl('https://www.spotvisionelectric.ro/userfiles/7c1d5fe1-369c/products/428030399_big.jpg')).not.toBeNull();
+    expect(allowedFileUrl('https://www.spotvisionelectric.ro/userfiles/7c1d5fe1-369c/gallery/-1115745117_BS01-00810_2.jpg')).not.toBeNull();
+    expect(allowedFileUrl('https://www.spotvisionelectric.ro/userfiles/7c1d5fe1-369c/prod_files/bs01_00810_datasheet.pdf')).not.toBeNull();
+    expect(allowedFileUrl('https://www.spotvisionelectric.ro/userfiles/7c1d5fe1-369c/feeds/83cf8da8.xml')).toBeNull(); // feed-ul sursă: nu
+    expect(allowedFileUrl('https://www.spotvisionelectric.ro/admin/login.aspx')).toBeNull();
     for (const bad of [
       'http://cdn.braytron.center/images/a.webp', // fără https
       'https://cdn.braytron.center/3dfiles/a.rar', // alt tip de fișier
@@ -308,6 +314,15 @@ describe('fișiere de la producător (poze + fișă tehnică)', () => {
     const res = await handleAdmin(new Request(url, { headers: { Authorization: `Bearer ${TOKEN}` } }), env, url, f as unknown as typeof fetch);
     expect(res!.status).toBe(502);
     expect(((await res!.json()) as { error: string }).error).toMatch(/HTTP 404/);
+  });
+});
+
+describe('API poze site', () => {
+  it('întoarce lista salvată la sincronizare; 404 înainte', async () => {
+    const { kv, call } = setup();
+    expect((await call('GET', '/admin/api/site-media')).status).toBe(404);
+    kv.store.set(KV_KEYS.siteMedia, '{"base":"https://x/","rows":[]}');
+    expect(await (await call('GET', '/admin/api/site-media')).text()).toBe('{"base":"https://x/","rows":[]}');
   });
 });
 

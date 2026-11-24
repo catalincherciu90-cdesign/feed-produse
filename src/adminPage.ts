@@ -141,6 +141,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <button data-tab="overrides">Excepții</button>
         <button data-tab="tech">Date tehnice</button>
         <button data-tab="media">Poze și fișe</button>
+        <button data-tab="site">Poze site</button>
       </nav>
       <div class="spacer"></div>
       <button class="btn primary" id="sync" title="Citește feed-ul acum și actualizează CEL și clienții">Sincronizează acum</button>
@@ -269,6 +270,18 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         </div>
         <div id="media-info" class="muted small" style="margin-bottom:8px"></div>
         <div id="media-list"></div>
+      </div>
+    </section>
+    <section id="tab-site" class="hidden">
+      <div class="card">
+        <h2>Poze și fișiere de pe site</h2>
+        <p class="muted small">Toate produsele de pe spotvisionelectric.ro, de la orice producător: poza principală (mare), galeria și fișierele (fișe tehnice, declarații). Se actualizează la fiecare sincronizare.</p>
+        <div class="toolbar">
+          <div class="grow"><label for="site-q">Caută după cod, nume sau EAN</label><input id="site-q" type="search" placeholder="ex. BR-BS01-00810, banda led, 5949097723933"></div>
+          <div class="field"><label for="site-brand">Producător</label><select id="site-brand"><option value="">Toți</option></select></div>
+        </div>
+        <div id="site-info" class="muted small" style="margin-bottom:8px"></div>
+        <div id="site-list"></div>
       </div>
     </section>
   </main>
@@ -473,6 +486,7 @@ function load(fromLogin) {
     renderStatus(); renderSettings(); renderOverrides(); loadAutoSync();
     if (!$('tab-tech').classList.contains('hidden')) loadTech(true);
     if (!$('tab-media').classList.contains('hidden')) loadTech(true).then(renderMedia);
+    if (!$('tab-site').classList.contains('hidden')) loadSiteMedia(true);
     return loadProducts(0);
   }).catch(function (e) {
     if (e.status === 401) { store(false, ''); showLogin(fromLogin ? 'Token greșit' : ''); }
@@ -527,7 +541,8 @@ function showTab(name) {
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) {
     if (b.getAttribute('data-tab') === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  ['status', 'products', 'settings', 'overrides', 'tech', 'media'].forEach(function (t) { $('tab-' + t).classList.toggle('hidden', t !== name); });
+  ['status', 'products', 'settings', 'overrides', 'tech', 'media', 'site'].forEach(function (t) { $('tab-' + t).classList.toggle('hidden', t !== name); });
+  if (name === 'site') loadSiteMedia();
   if (name === 'tech') loadTech();
   if (name === 'media') loadTech().then(renderMedia);
   try { history.replaceState(null, '', '#' + name); } catch (e) {}
@@ -1148,14 +1163,13 @@ function productJobs(code, prod, fmt, withPhotos, withPdf) {
   return jobs;
 }
 function fetchJob(j) {
-  return fetchProducerFile(j.url).then(function (data) { return j.convert ? toJpeg(data, j.mime) : data; });
+  // j.fallback: altă adresă încercată dacă prima nu merge (ex. poza mare -> miniatura)
+  var get = fetchProducerFile(j.url).catch(function (e) { if (j.fallback) return fetchProducerFile(j.fallback); throw e; });
+  return get.then(function (data) { return j.convert ? toJpeg(data, j.mime) : data; });
 }
-/** Descarcă pozele și fișa unui produs într-o arhivă .zip (opts: format, photos, pdf). */
-function downloadProductFiles(code, prod, btn, opts) {
-  opts = opts || {};
-  var fmt = opts.format || photoFormat();
-  var jobs = productJobs(code, prod, fmt, opts.photos !== false, opts.pdf !== false);
-  if (!jobs.length) return toast('Producătorul nu are poze sau fișă tehnică pentru ' + code + '.');
+/** Descarcă fișierele (jobs) într-o arhivă .zip; ce nu merge apare în LIPSESC.txt. */
+function downloadJobs(zipName, jobs, btn, what) {
+  if (!jobs.length) return toast('Nu există fișiere de descărcat.');
   var label = btn.textContent; btn.disabled = true;
   var files = [], failed = [], done = 0;
   btn.textContent = 'Se descarcă 0/' + jobs.length + '…';
@@ -1167,17 +1181,25 @@ function downloadProductFiles(code, prod, btn, opts) {
       .catch(function (e) { failed.push(j.label + ' (' + e.message + ')'); })
       .then(function () { done++; btn.textContent = 'Se descarcă ' + done + '/' + jobs.length + '…'; return next(); });
   }
-  Promise.all([next(), next()]).then(function () {
+  return Promise.all([next(), next()]).then(function () {
     if (!files.length) throw new Error('niciun fișier nu a putut fi descărcat: ' + failed.join('; '));
     files.sort(function (a, b) { return a.order - b.order; });
-    if (failed.length) {
-      files.push({ name: 'LIPSESC.txt', data: new TextEncoder().encode('Nu s-au putut descărca:\r\n' + failed.join('\r\n') + '\r\n') });
-    }
-    var zip = BAPP.buildZip(files.map(function (f) { return { name: f.name, data: f.data }; }));
-    saveBlob(zip, 'application/zip', code + (opts.pdf === false ? '-poze' : '-poze-si-fisa') + '.zip');
-    toast(code + ': ' + (files.length - (failed.length ? 1 : 0)) + ' fișiere descărcate' + (fmt === 'jpg' && opts.photos !== false ? ' (poze JPG)' : '') + (failed.length ? '; lipsesc ' + failed.length + ' (vezi LIPSESC.txt în arhivă)' : '') + '.');
-  }).catch(function (e) { toast('Eroare la ' + code + ': ' + e.message); })
+    // nume unice în arhivă
+    var seen = {};
+    files.forEach(function (f) { var n = f.name, k = 2; while (seen[n]) { n = f.name.replace(/(\.\w+)?$/, '-' + (k++) + '$1'); } seen[n] = 1; f.name = n; });
+    if (failed.length) files.push({ name: 'LIPSESC.txt', data: new TextEncoder().encode('Nu s-au putut descărca:\r\n' + failed.join('\r\n') + '\r\n') });
+    saveBlob(BAPP.buildZip(files.map(function (f) { return { name: f.name, data: f.data }; })), 'application/zip', zipName);
+    toast(zipName.replace(/\.zip$/, '') + ': ' + (files.length - (failed.length ? 1 : 0)) + ' fișiere descărcate' + (what || '') + (failed.length ? '; lipsesc ' + failed.length + ' (vezi LIPSESC.txt în arhivă)' : '') + '.');
+  }).catch(function (e) { toast('Eroare: ' + e.message); })
     .then(function () { btn.disabled = false; btn.textContent = label; });
+}
+/** Descarcă pozele și fișa unui produs Braytron într-o arhivă .zip (opts: format, photos, pdf). */
+function downloadProductFiles(code, prod, btn, opts) {
+  opts = opts || {};
+  var fmt = opts.format || photoFormat();
+  var jobs = productJobs(code, prod, fmt, opts.photos !== false, opts.pdf !== false);
+  if (!jobs.length) return toast('Producătorul nu are poze sau fișă tehnică pentru ' + code + '.');
+  downloadJobs(code + (opts.pdf === false ? '-poze' : '-poze-si-fisa') + '.zip', jobs, btn, fmt === 'jpg' && opts.photos !== false ? ' (poze JPG)' : '');
 }
 /** Descarcă un singur fișier (o poză sau fișa), fără arhivă. */
 function downloadOne(job, btn) {
@@ -1249,6 +1271,83 @@ function renderMedia() {
     ]));
   });
 }
+// ---------- Tab „Poze site” ----------
+var site = { data: null, loading: null, limit: 20 };
+function loadSiteMedia(force) {
+  if (!state.token) return Promise.resolve();
+  if (site.loading) return site.loading;
+  if (site.data && !force) { renderSite(); return Promise.resolve(); }
+  $('site-info').textContent = 'Se încarcă lista produselor de pe site (~1,5 MB)…';
+  site.loading = api('GET', 'site-media').then(function (d) {
+    site.data = d;
+    var brands = {}; d.rows.forEach(function (r) { if (r[2]) brands[r[2]] = (brands[r[2]] || 0) + 1; });
+    var sel = $('site-brand'); var cur = sel.value; clear(sel);
+    sel.appendChild(el('option', { value: '', text: 'Toți (' + fmtNum(d.rows.length) + ')' }));
+    Object.keys(brands).sort(function (a, b) { return brands[b] - brands[a]; }).forEach(function (b) { sel.appendChild(el('option', { value: b, text: b + ' (' + fmtNum(brands[b]) + ')' })); });
+    sel.value = cur;
+    renderSite();
+  }).catch(function (e) { $('site-info').textContent = e.status === 404 ? 'Lista apare după următoarea sincronizare. Apasă „Sincronizează acum”.' : 'Eroare: ' + e.message; })
+    .then(function () { site.loading = null; });
+  return site.loading;
+}
+/** Poza mare a unei miniaturi de pe site (…_LIST.jpg -> …_big.jpg), ca în feed-ul CEL. */
+function siteBig(u) { return u.replace(/_LIST(\.[a-z0-9]+)$/i, '_big$1'); }
+function siteJobs(r, photos, files) {
+  var base = site.data.base || '';
+  var abs = function (u) { return /^https?:/i.test(u) ? u : base + u; };
+  var code = r[0], jobs = [];
+  if (photos) {
+    if (r[4]) { var thumb = abs(r[4]); var big = siteBig(thumb); jobs.push({ url: big, fallback: big !== thumb ? thumb : '', name: code + '-1.' + (thumb.split('.').pop() || 'jpg').toLowerCase(), label: 'poza principală', thumb: thumb }); }
+    (r[5] || []).forEach(function (u, i) { var a = abs(u); jobs.push({ url: a, name: code + '-' + (i + 2) + '.' + (a.split('.').pop() || 'jpg').toLowerCase(), label: 'poza ' + (i + 2), thumb: a }); });
+  }
+  if (files) (r[6] || []).forEach(function (u) { var a = abs(u); jobs.push({ url: a, name: decodeURIComponent(a.split('/').pop()), label: 'fișierul ' + decodeURIComponent(a.split('/').pop()) }); });
+  return jobs;
+}
+function renderSite() {
+  var root = $('site-list'); if (!root) return; clear(root);
+  if (!site.data) return;
+  var q = normalize($('site-q').value.trim()); var brand = $('site-brand').value;
+  var rows = site.data.rows;
+  if (!q && !brand) { $('site-info').textContent = fmtNum(rows.length) + ' produse pe site. Scrie un cod, o parte din nume sau un EAN, sau alege producătorul.'; return; }
+  var words = q.split(/\s+/).filter(Boolean);
+  var hits = rows.filter(function (r) {
+    if (brand && r[2] !== brand) return false;
+    var hay = normalize(r[0] + ' ' + r[1] + ' ' + r[3]);
+    return words.every(function (w) { return hay.indexOf(w) >= 0; });
+  });
+  $('site-info').textContent = fmtNum(hits.length) + ' produse găsite' + (hits.length > site.limit ? ' · afișez primele ' + site.limit + ' (caută mai precis)' : '');
+  hits.slice(0, site.limit).forEach(function (r) {
+    var photos = siteJobs(r, true, false), files = siteJobs(r, false, true);
+    var strip = el('div', { class: 'row', style: 'gap:8px;margin:8px 0' });
+    photos.forEach(function (j) {
+      strip.appendChild(el('div', { style: 'text-align:center' }, [
+        el('img', { class: 'thumb', loading: 'lazy', alt: j.label, referrerpolicy: 'no-referrer', src: j.thumb, style: 'width:88px;height:88px' }),
+        el('button', { class: 'link small', type: 'button', text: 'Descarcă', title: 'Descarcă ' + j.name, onclick: function (ev) { downloadOne(j, ev.currentTarget); } })
+      ]));
+    });
+    if (!photos.length) strip.appendChild(missingBox('fără poze'));
+    var fileRow = files.length ? el('div', { class: 'row small', style: 'gap:10px;flex-wrap:wrap' }, [el('span', { class: 'muted', text: 'Fișiere:' })].concat(files.map(function (j) {
+      return el('button', { class: 'link small', type: 'button', text: j.name, onclick: function (ev) { downloadOne(j, ev.currentTarget); } });
+    }))) : null;
+    root.appendChild(el('div', { class: 'card', style: 'margin-bottom:10px' }, [
+      el('div', { class: 'row', style: 'justify-content:space-between' }, [
+        el('div', null, [
+          el('div', { class: 'code', text: r[0] }),
+          el('div', { class: 'small', text: r[1] || '' }),
+          r[2] ? badge([r[2], 'b-muted']) : null
+        ]),
+        el('div', { class: 'row', style: 'gap:6px' }, [
+          el('button', { class: 'btn primary', type: 'button', text: 'Tot (.zip)', title: 'Pozele și fișierele într-o arhivă', onclick: function (ev) { downloadJobs(r[0] + '-poze-si-fisiere.zip', photos.concat(files), ev.currentTarget); } }),
+          photos.length ? el('button', { class: 'btn', type: 'button', text: 'Doar pozele (.zip)', onclick: function (ev) { downloadJobs(r[0] + '-poze.zip', photos, ev.currentTarget); } }) : null
+        ])
+      ]),
+      strip,
+      fileRow
+    ]));
+  });
+}
+$('site-q').addEventListener('input', function () { clearTimeout(site.t); site.t = setTimeout(renderSite, 200); });
+$('site-brand').addEventListener('change', renderSite);
 $('media-q').addEventListener('input', function () { clearTimeout(media.t); media.t = setTimeout(renderMedia, 200); });
 $('media-fmt').addEventListener('change', function () { setPhotoFormat($('media-fmt').value); renderMedia(); });
 
@@ -1698,7 +1797,7 @@ function resetMapping() {
 
 // ---------- start ----------
 var initial = (location.hash || '').replace('#', '');
-if (['status', 'products', 'settings', 'overrides', 'tech', 'media'].indexOf(initial) >= 0) showTab(initial);
+if (['status', 'products', 'settings', 'overrides', 'tech', 'media', 'site'].indexOf(initial) >= 0) showTab(initial);
 state.token = store(true);
 if (state.token) load(false).catch(function () {}); else showLogin();
 })();

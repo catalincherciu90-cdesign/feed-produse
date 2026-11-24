@@ -4,8 +4,8 @@ import { CelClient } from '../src/cel';
 import { bigImageUrl, buildCelFeed, celStock, celStockFor, collapseDuplicateTags, priceWithGreenTax } from '../src/celFeed';
 import { buildClientFeed, isAvailable } from '../src/clientFeed';
 import { loadConfig, type Env } from '../src/config';
-import { countGallery, parseFeed, parseNumber } from '../src/source';
-import { buildSnapshot, commonPrefix, KV_KEYS, planCelUpdates, runSync } from '../src/sync';
+import { countGallery, fileUrls, parseFeed, parseNumber } from '../src/source';
+import { buildSiteMedia, buildSnapshot, commonPrefix, KV_KEYS, planCelUpdates, runSync } from '../src/sync';
 
 class MemKV {
   store = new Map<string, string>();
@@ -433,6 +433,30 @@ describe('fișierele produsului din feed-ul site-ului (File)', () => {
 <product><Product_Code>BR-B</Product_Code><Stock>5</Stock><File><![CDATA[]]></File></product></products>`;
     const { products } = parseFeed(xml, loadConfig({ SOURCE_URL: 'https://x.ro/f.xml', FIELD_SKU: 'Product_Code', FIELD_STOCK: 'Stock', FIELD_FILE: 'File' } as unknown as Env));
     expect(products.map((p) => [p.sku, p.hasFile])).toEqual([['BR-A', true], ['BR-B', false]]);
+  });
+});
+
+describe('pozele și fișierele de pe site (tab-ul „Poze site”)', () => {
+  it('fișierele relative primesc adresa site-ului; separate prin #', () => {
+    expect(fileUrls('/userfiles/a/prod_files/x.pdf#/userfiles/a/prod_files/y.pdf', 'https://www.site.ro')).toEqual([
+      'https://www.site.ro/userfiles/a/prod_files/x.pdf',
+      'https://www.site.ro/userfiles/a/prod_files/y.pdf',
+    ]);
+    expect(fileUrls('', 'https://www.site.ro')).toEqual([]);
+    expect(fileUrls('fara-slash.pdf', 'https://www.site.ro')).toEqual([]);
+  });
+
+  it('păstrează începutul comun al linkurilor o singură dată', () => {
+    const B = 'https://www.site.ro/userfiles/abc/';
+    const m = buildSiteMedia([
+      { sku: 'A', name: 'Prod A', stock: 1, price: 1, brand: 'Braytron', ean: '594', image: B + 'products/1_LIST.jpg', gallery: [B + 'gallery/1_2.jpg'], files: [B + 'prod_files/a.pdf'], extra: {} },
+      { sku: 'B', name: 'Prod B', stock: 1, price: 1, image: B + 'products/2_LIST.jpg', extra: {} },
+    ]);
+    expect(m.base).toBe(B);
+    expect(m.rows).toEqual([
+      ['A', 'Prod A', 'Braytron', '594', 'products/1_LIST.jpg', ['gallery/1_2.jpg'], ['prod_files/a.pdf']],
+      ['B', 'Prod B', '', '', 'products/2_LIST.jpg', [], []],
+    ]);
   });
 });
 

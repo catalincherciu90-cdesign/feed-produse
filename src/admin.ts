@@ -70,6 +70,8 @@ async function readBody(req: Request, max = MAX_BODY): Promise<unknown> {
 const FILE_SOURCES: { host: string; path: RegExp }[] = [
   { host: 'cdn.braytron.center', path: /^\/images\/[\w.-]+\.(webp|jpe?g|png)$/i },
   { host: 'bapp.ro', path: /^\/product-datasheet\/[\w-]+\/[\w.-]+\.pdf$/i },
+  // pozele și fișierele de pe site-ul tău (tab-ul „Poze site”)
+  { host: 'www.spotvisionelectric.ro', path: /^\/userfiles\/[\w-]+\/(products|gallery|prod_files)\/[^/]+\.(jpe?g|png|webp|gif|pdf)$/i },
 ];
 
 export function allowedFileUrl(raw: string | null): URL | null {
@@ -132,6 +134,14 @@ export async function handleAdmin(
         return raw(
           `{"status":${status ?? 'null'},"history":${history ?? '[]'},"settings":${settings ?? 'null'},"overrides":${overrides ?? '{}'}}`,
         );
+      }
+
+      case 'GET /admin/api/site-media': {
+        const body = await kv.get(KV_KEYS.siteMedia, { type: 'stream', cacheTtl: 30 });
+        if (!body) return error('Pozele site-ului apar după prima sincronizare', 404);
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS },
+        });
       }
 
       case 'GET /admin/api/products': {

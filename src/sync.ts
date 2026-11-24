@@ -174,6 +174,31 @@ export function buildSnapshot(
   };
 }
 
+export interface SiteMedia {
+  generatedAt?: string;
+  /** Începutul comun al linkurilor (ex. https://www.site.ro/userfiles/<id>/); rândurile îl omit. */
+  base: string;
+  /** [cod, nume, producător, EAN, poza principală (miniatura), galerie[], fișiere[]] */
+  rows: [string, string, string, string, string, string[], string[]][];
+}
+
+/** Pozele și fișierele fiecărui produs, cu începutul comun al linkurilor păstrat o singură dată. */
+export function buildSiteMedia(products: Product[]): SiteMedia {
+  const all: string[] = [];
+  for (const p of products) {
+    if (p.image) all.push(p.image);
+    for (const u of p.gallery ?? []) all.push(u);
+    for (const u of p.files ?? []) all.push(u);
+  }
+  // începutul comun până la /userfiles/<id>/ (al doilea nivel de dosar), ca miniaturile, galeria și fișierele să-l împartă
+  const base = commonPrefix(all.map((u) => u.replace(/[^/]+\/[^/]*$/, '')));
+  const rel = (u: string) => (base && u.startsWith(base) ? u.slice(base.length) : u);
+  return {
+    base,
+    rows: products.map((p) => [p.sku, p.name, p.brand ?? '', p.ean ?? '', p.image ? rel(p.image) : '', (p.gallery ?? []).map(rel), (p.files ?? []).map(rel)]),
+  };
+}
+
 /** Prefixul comun până la ultimul „/” (ex. https://site.ro/userfiles/.../products/). */
 export function commonPrefix(urls: string[]): string {
   if (!urls.length) return '';
@@ -420,6 +445,19 @@ export async function runSync(baseConfig: Config, kv: KVStore, now = new Date(),
 
     // 2c. Lista de produse pentru panou
     await kv.put(KV_KEYS.snapshot, JSON.stringify(buildSnapshot(products, admin.settings, rules, overrides, status.startedAt)));
+
+    // 2d. Pozele și fișierele de pe site, pentru tab-ul „Poze site” (se scriu doar dacă s-au schimbat)
+    try {
+      const media = buildSiteMedia(products);
+      const body = JSON.stringify(media);
+      const hash = await sha256(body);
+      if (hash !== (await kv.get(KV_KEYS.siteMediaHash))) {
+        await kv.put(KV_KEYS.siteMedia, JSON.stringify({ ...media, generatedAt: status.startedAt }));
+        await kv.put(KV_KEYS.siteMediaHash, hash);
+      }
+    } catch (e) {
+      warnings.push(`Pozele site-ului pentru panou nu au fost actualizate: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     // 3. CEL prin API
     if (!config.celEnabled) {

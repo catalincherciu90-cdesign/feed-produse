@@ -9,6 +9,7 @@ export interface Product {
   image?: string; // linkul imaginii principale (miniatura din feed)
   galleryCount?: number; // câte poze are în galerie (linkuri separate prin #)
   hasFile?: boolean; // are fișiere (fișă tehnică etc.) pe site
+  files?: string[]; // linkurile fișierelor de pe site (fișe, declarații), complete
   greenTax?: number | null; // taxa verde (cu TVA)
   ean?: string; // cod de bare, așa cum vine din feed
   // Pentru catalogul Facebook
@@ -117,7 +118,7 @@ export interface ParseResult {
   skippedHeader: number;
 }
 
-export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields' | 'clientFeedExtraFields'>): ParseResult {
+export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields' | 'clientFeedExtraFields'> & { sourceUrl?: string }): ParseResult {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '@_',
@@ -144,6 +145,13 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
   const imageField = pickField(items, config.fields.image, IMAGE_CANDIDATES);
   const galleryField = pickField(items, config.fields.gallery, GALLERY_CANDIDATES);
   const fileField = pickField(items, config.fields.file, ['file', 'files']);
+  // fișierele sunt scrise relativ (/userfiles/...): le completăm cu adresa site-ului din linkul feed-ului
+  let siteOrigin = '';
+  try {
+    siteOrigin = config.sourceUrl ? new URL(config.sourceUrl).origin : '';
+  } catch {
+    siteOrigin = '';
+  }
   const greenTaxField = pickField(items, config.fields.greenTax, GREEN_TAX_CANDIDATES);
   const eanField = pickField(items, config.fields.ean, EAN_CANDIDATES);
   const urlField = pickField(items, undefined, URL_CANDIDATES);
@@ -187,6 +195,7 @@ export function parseFeed(xml: string, config: Pick<Config, 'itemPath' | 'fields
       image: (imageField && text(item[imageField])) || undefined,
       galleryCount: galleryField ? countGallery(text(item[galleryField])) : undefined,
       hasFile: fileField ? !!(text(item[fileField]) ?? '').trim() : undefined,
+      files: fileField ? fileUrls(text(item[fileField]), siteOrigin) : undefined,
       greenTax: greenTaxField ? parseNumber(text(item[greenTaxField])) : undefined,
       ean: eanField ? text(item[eanField]) ?? '' : undefined,
       url: (urlField && text(item[urlField])) || undefined,
@@ -245,6 +254,16 @@ function detectTags(doc: unknown, itemPath: string | undefined, items: Obj[]): {
 }
 
 /** Galeria Teamshare: linkuri separate prin „#”. */
+/** Fișierele produsului (separate prin #), cu linkul complet. */
+export function fileUrls(raw: string | undefined, origin: string): string[] {
+  return (raw ?? '')
+    .split('#')
+    .map((u) => u.trim())
+    .filter(Boolean)
+    .map((u) => (u.startsWith('/') && origin ? origin + u : u))
+    .filter((u) => /^https?:\/\//i.test(u));
+}
+
 export function galleryUrls(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw.split('#').map((u) => u.trim()).filter((u) => /^https?:\/\//i.test(u));
