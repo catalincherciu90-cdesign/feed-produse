@@ -264,7 +264,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <h2>Poze și fișe tehnice</h2>
         <p class="muted small">Caută orice produs Braytron și descarcă pozele (convertite în JPG sau în formatul original WebP) și fișa tehnică PDF.</p>
         <div class="toolbar">
-          <div class="grow"><label for="media-q">Caută după codul tău, codul Braytron, nume sau EAN</label><input id="media-q" type="search" placeholder="ex. BR-BD60-03280, BD60-03280, MAG.RAIL"></div>
+          <div class="grow"><label for="media-q">Caută după codul tău, codul Braytron, nume sau EAN (mai multe coduri: separă-le prin virgulă)</label><input id="media-q" type="search" placeholder="ex. BR-BD60-03280, BD60-01180, BY41-00110"></div>
           <div class="field"><label for="media-fmt">Format poze</label>
             <select id="media-fmt"><option value="jpg">JPG (convertit)</option><option value="webp">WebP (original)</option></select></div>
         </div>
@@ -277,7 +277,7 @@ dialog::backdrop { background: rgba(0,0,0,.45); }
         <h2>Poze și fișiere de pe site</h2>
         <p class="muted small">Toate produsele de pe spotvisionelectric.ro, de la orice producător: poza principală (mare), galeria și fișierele (fișe tehnice, declarații). Se actualizează la fiecare sincronizare.</p>
         <div class="toolbar">
-          <div class="grow"><label for="site-q">Caută după cod, nume sau EAN</label><input id="site-q" type="search" placeholder="ex. BR-BS01-00810, banda led, 5949097723933"></div>
+          <div class="grow"><label for="site-q">Caută după cod, nume sau EAN (mai multe coduri: separă-le prin virgulă)</label><input id="site-q" type="search" placeholder="ex. BR-BS01-00810, BR-BD60-03280, BR-BN10-03804"></div>
           <div class="field"><label for="site-brand">Producător</label><select id="site-brand"><option value="">Toți</option></select></div>
         </div>
         <div id="site-info" class="muted small" style="margin-bottom:8px"></div>
@@ -1210,6 +1210,55 @@ function downloadOne(job, btn) {
     .then(function () { btn.disabled = false; btn.textContent = label; });
 }
 
+// ---------- Căutare după mai multe coduri (taburile cu poze) ----------
+/**
+ * Textul din căsuță: mai multe coduri separate prin virgulă, punct și virgulă sau rânduri noi
+ * (sau doar spații, dacă toate arată a coduri, ex. „BS01-00810 BD60-03280”). Altfel, o singură căutare.
+ */
+function searchTerms(raw) {
+  var t = String(raw || '').trim();
+  if (!t) return { multi: false, terms: [] };
+  var parts = t.split(/[,;\n\r\t]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  if (parts.length < 2) {
+    var sp = t.split(/\s+/).filter(Boolean);
+    var looksCode = function (x) { return /\d/.test(x) && /^[a-z0-9]+([-_.][a-z0-9]+)+$/i.test(x); };
+    if (sp.length > 1 && sp.every(looksCode)) parts = sp;
+  }
+  return { multi: parts.length > 1, terms: parts.length > 1 ? parts : [t] };
+}
+/**
+ * Caută fiecare termen: întâi potrivire exactă pe cod, altfel toate cuvintele în text.
+ * Întoarce rezultatele unice, în ordinea codurilor scrise, și termenii fără rezultat.
+ */
+function multiSearch(items, codesOf, hayOf, terms) {
+  var hits = [], seen = new Set(), missing = [];
+  terms.forEach(function (term) {
+    var n = normalize(term);
+    var exact = items.filter(function (it) { return codesOf(it).some(function (c) { return normalize(c) === n; }); });
+    var words = n.split(/\s+/).filter(Boolean);
+    var found = exact.length ? exact : items.filter(function (it) { var h = hayOf(it); return words.every(function (w) { return h.indexOf(w) >= 0; }); });
+    if (!found.length) missing.push(term);
+    found.forEach(function (it) { if (!seen.has(it)) { seen.add(it); hits.push(it); } });
+  });
+  return { hits: hits, missing: missing };
+}
+/** Rândul de sub căutare: câte produse, ce coduri lipsesc și butonul pentru toate (într-un singur .zip). */
+function searchInfo(box, hits, missing, limit, multi, allJobs, zipName) {
+  clear(box);
+  box.appendChild(document.createTextNode(fmtNum(hits.length) + ' produse găsite' + (hits.length > limit ? ' · afișez primele ' + limit + ' (caută mai precis)' : '')));
+  if (missing.length) box.appendChild(el('span', { style: 'color:var(--bad);margin-left:8px', text: 'Negăsite: ' + missing.join(', ') }));
+  if (multi && hits.length > 1) {
+    box.appendChild(document.createTextNode(' '));
+    box.appendChild(el('button', { class: 'btn primary', type: 'button', style: 'margin-left:8px', text: 'Descarcă toate (' + fmtNum(hits.length) + ' produse, .zip)', title: 'Câte un dosar pentru fiecare produs',
+      onclick: function (ev) { downloadJobs(zipName, allJobs(), ev.currentTarget); } }));
+  }
+}
+/** Pune fișierele unui produs într-un dosar cu codul lui (pentru arhiva cu mai multe produse). */
+function inFolder(code, jobs) {
+  var folder = code.replace(/[\\/:*?"<>|]/g, '_') + '/';
+  return jobs.map(function (j) { return Object.assign({}, j, { name: folder + j.name, label: code + ': ' + j.label }); });
+}
+
 // ---------- Tab „Poze și fișe” ----------
 var media = { q: '', limit: 20 };
 function mediaIndex() {
@@ -1226,20 +1275,21 @@ function renderMedia() {
   if (!tech.data) { $('media-info').textContent = state.token ? 'Se încarcă datele producătorului… (dacă nu apar, apasă „Sincronizează acum”)' : ''; return; }
   var own = mediaIndex();
   var prefix = (tech.mapping && tech.mapping.codePrefix) || '';
-  var q = normalize($('media-q').value.trim());
+  var st = searchTerms($('media-q').value);
   var all = Object.keys(tech.data.products);
-  if (!q) {
+  if (!st.terms.length) {
     $('media-info').textContent = fmtNum(all.length) + ' produse Braytron. Scrie un cod, o parte din nume sau un EAN ca să cauți.';
     return;
   }
-  var words = q.split(/\s+/).filter(Boolean);
-  var hits = all.filter(function (c) {
-    var p = tech.data.products[c];
-    var hay = normalize(c + ' ' + (own[c] || prefix + c) + ' ' + (p.n || '') + ' ' + (p.e || ''));
-    return words.every(function (w) { return hay.indexOf(w) >= 0; });
-  });
-  $('media-info').textContent = fmtNum(hits.length) + ' produse găsite' + (hits.length > media.limit ? ' · afișez primele ' + media.limit + ' (caută mai precis)' : '');
-  hits.slice(0, media.limit).forEach(function (c) {
+  var res = multiSearch(all, function (c) { var p = tech.data.products[c]; return [c, own[c] || prefix + c, p.e || '']; },
+    function (c) { var p = tech.data.products[c]; return normalize(c + ' ' + (own[c] || prefix + c) + ' ' + (p.n || '') + ' ' + (p.e || '')); }, st.terms);
+  var hits = res.hits, limit = st.multi ? 100 : media.limit;
+  searchInfo($('media-info'), hits, res.missing, limit, st.multi, function () {
+    var jobs = [];
+    hits.forEach(function (c) { var code = own[c] || prefix + c; jobs = jobs.concat(inFolder(code, productJobs(code, tech.data.products[c], photoFormat(), true, true))); });
+    return jobs;
+  }, 'poze-si-fise-' + hits.length + '-produse.zip');
+  hits.slice(0, limit).forEach(function (c) {
     var p = tech.data.products[c];
     var code = own[c] || prefix + c;
     var fmt = photoFormat();
@@ -1306,17 +1356,18 @@ function siteJobs(r, photos, files) {
 function renderSite() {
   var root = $('site-list'); if (!root) return; clear(root);
   if (!site.data) return;
-  var q = normalize($('site-q').value.trim()); var brand = $('site-brand').value;
+  var st = searchTerms($('site-q').value); var brand = $('site-brand').value;
   var rows = site.data.rows;
-  if (!q && !brand) { $('site-info').textContent = fmtNum(rows.length) + ' produse pe site. Scrie un cod, o parte din nume sau un EAN, sau alege producătorul.'; return; }
-  var words = q.split(/\s+/).filter(Boolean);
-  var hits = rows.filter(function (r) {
-    if (brand && r[2] !== brand) return false;
-    var hay = normalize(r[0] + ' ' + r[1] + ' ' + r[3]);
-    return words.every(function (w) { return hay.indexOf(w) >= 0; });
-  });
-  $('site-info').textContent = fmtNum(hits.length) + ' produse găsite' + (hits.length > site.limit ? ' · afișez primele ' + site.limit + ' (caută mai precis)' : '');
-  hits.slice(0, site.limit).forEach(function (r) {
+  if (!st.terms.length && !brand) { $('site-info').textContent = fmtNum(rows.length) + ' produse pe site. Scrie un cod, o parte din nume sau un EAN, sau alege producătorul.'; return; }
+  var pool = brand ? rows.filter(function (r) { return r[2] === brand; }) : rows;
+  var res = st.terms.length ? multiSearch(pool, function (r) { return [r[0], r[3]]; }, function (r) { return normalize(r[0] + ' ' + r[1] + ' ' + r[3]); }, st.terms) : { hits: pool, missing: [] };
+  var hits = res.hits, limit = st.multi ? 100 : site.limit;
+  searchInfo($('site-info'), hits, res.missing, limit, st.multi, function () {
+    var jobs = [];
+    hits.forEach(function (r) { jobs = jobs.concat(inFolder(r[0], siteJobs(r, true, true))); });
+    return jobs;
+  }, 'poze-site-' + hits.length + '-produse.zip');
+  hits.slice(0, limit).forEach(function (r) {
     var photos = siteJobs(r, true, false), files = siteJobs(r, false, true);
     var strip = el('div', { class: 'row', style: 'gap:8px;margin:8px 0' });
     photos.forEach(function (j) {
